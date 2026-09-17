@@ -1,78 +1,97 @@
 # PROJECT KNOWLEDGE BASE
 
 **Generated:** 2026-09-06
-**Git:** not a git repository
-**Stale:** line numbers and the CODE MAP below predate the step-1 hardening of monitor.js — pending regeneration.
+**Git:** repo root is `/root` (no remote); history: `c2b8de0` baseline → `1bd4b07` step-1 fixes → step-2 module split
+**Stale:** line numbers in the CODE MAP are approximate; the layout below reflects the step-2 module split.
 
 ## OVERVIEW
-Single-file Node.js (CommonJS) Telegram bot that monitors ticket availability for TGV,
+Node.js (CommonJS) Telegram bot that monitors ticket availability for TGV,
 a Malaysian cinema chain (tgv.com.my). Polls the TGV boxoffice API every 60s and
 alerts the owner via Telegram when monitored promo tickets gain sellable quota.
 Stack: axios + raw Telegram Bot API over long-polling.
+Was a single 826-line file; split into `src/` modules in step 2 (`monitor.js` is now a 20-line entry shim).
 
 ## STRUCTURE
 ```
 tgv-monitor/
-├── monitor.js            # the entire application (731 lines)
+├── monitor.js            # pm2 entry shim only (20 lines): require.main guard + 6 re-exports
+├── src/
+│   ├── config.js         # TG_BOT_TOKEN, TG_CHAT_ID, CHECK_INTERVAL_MS, DATA_FILE, COMMON_HEADERS
+│   ├── util.js           # escapeHtml
+│   ├── payload.js        # safeDecode, parseCallback
+│   ├── telegram.js       # callTgApi, notifyUser, setupBotCommands
+│   ├── tgv-api.js        # generateUserSessionId, getTodayBusinessDate, fetchMovieByItemKey/Sessions/Tickets
+│   ├── store.js          # subscriptions (get/set accessors) + sessionCache; load/save
+│   ├── views.js          # showSessionsByMovieId, showTicketSelection, sendRealtimeDashboard
+│   ├── handlers.js       # handleSmartInput, handleMessage, handleCallbackQuery
+│   ├── probe.js          # probeRunning, runProbeCycle
+│   └── app.js            # lastUpdateId, startTelegramPolling, main
 ├── package.json          # commonjs; deps: axios, node-telegram-bot-api
 ├── package-lock.json
 ├── subscriptions.json    # runtime state: monitored sessions (mutated live by bot)
 ├── node_modules/
 └── .omo/                 # agent session state — NOT project code, ignore
 ```
+Dependency direction (acyclic): `config`/`util`/`payload` → none; `telegram`/`tgv-api`/`store` → config;
+`views` → telegram, tgv-api, store, util, config; `handlers` → telegram, tgv-api, store, payload, views, util, config;
+`probe` → telegram, tgv-api, store, util; `app` → telegram, handlers, probe, config;
+`monitor.js` (shim) → app, probe, util, payload, store.
 
 ## WHERE TO LOOK
 | Task | Location | Notes |
 |------|----------|-------|
-| Any new feature | monitor.js | single file, no modules |
-| Telegram commands (/uuid /check /list /del /status) | `handleMessage` + `handleSmartInput` | monitor.js:360-432, 256 |
-| Inline button actions | `handleCallbackQuery` | monitor.js:489; prefix scheme `pick_ sub_ suball_ del_ quicksub_ showall_ refresh_dashboard` |
-| TGV API calls | `fetchMovieByItemKey` / `fetchMovieSessions` / `fetchTickets` | monitor.js:85-170; MOVIE_BY_ITEMKEY → SESSIONS → TICKETS chain |
-| Polling/alert logic | `runProbeCycle` | monitor.js:656; dedup via `alerted` flag, auto-remove at 15 fails |
-| Dashboard board | `sendRealtimeDashboard` | monitor.js:435 |
-| Persistence | `loadSubscriptions` / `saveSubscriptions` | monitor.js:49-64; synchronous fs |
-| Bot command registration | `setupBotCommands` | monitor.js:36 |
-| Telegram transport | `callTgApi` / `notifyUser` | monitor.js:15-33; raw API, HTML parse_mode |
+| Any new feature | `src/` modules | pick the module owning the concern; keep the shim thin |
+| Telegram commands (/uuid /check /list /del /status) | `handleMessage` + `handleSmartInput` | src/handlers.js |
+| Inline button actions | `handleCallbackQuery` | src/handlers.js; prefix scheme `pick_ sub_ suball_ del_ quicksub_ showall_ refresh_dashboard` |
+| TGV API calls | `fetchMovieByItemKey` / `fetchMovieSessions` / `fetchTickets` | src/tgv-api.js; MOVIE_BY_ITEMKEY → SESSIONS → TICKETS chain |
+| Polling/alert logic | `runProbeCycle` | src/probe.js; dedup via `alerted` flag, auto-remove at 15 fails |
+| Dashboard board | `sendRealtimeDashboard` | src/views.js |
+| Persistence | `loadSubscriptions` / `saveSubscriptions` | src/store.js; synchronous fs |
+| Bot command registration | `setupBotCommands` | src/telegram.js |
+| Telegram transport | `callTgApi` / `notifyUser` | src/telegram.js; raw API, HTML parse_mode |
 
 ## CODE MAP
-Full-file read (no LSP/codegraph available). All symbols live in monitor.js.
+Split across `src/` (step 2); `monitor.js` is a thin pm2 entry shim that re-exports 6 symbols.
 
-| Symbol | Role |
-|--------|------|
-| `TG_BOT_TOKEN` `TG_CHAT_ID` (7-8) | hardcoded credentials — treat as secret, never log/echo |
-| `CHECK_INTERVAL_MS` (9) | probe cadence, 60s |
-| `sessionCache` (12) | Map `cinema_session` → {movieName, showTime, tickets} for callback handling |
-| `callTgApi` (15) | axios POST to api.telegram.org, swallows errors → null |
-| `notifyUser` (26) | sendMessage with HTML + optional reply_markup |
-| `setupBotCommands` (36) | setMyCommands for the 5 slash commands |
-| `load/saveSubscriptions` (49-64) | JSON file state; save = full rewrite, sync |
-| `generateUserSessionId` (68) | crypto.randomBytes hex, per tickets request |
-| `getTodayBusinessDate` (72) | Asia/Kuala_Lumpur date, en-CA → YYYY-MM-DD |
-| `COMMON_HEADERS` (76) | spoofed browser headers for api.tgv.com.my |
-| `fetchMovieByItemKey` (85) | itemkey → movie recid; tries 2 endpoints, falls back to now-showing list |
-| `fetchMovieSessions` (115) | movieid+date+cinema → session list (time/screen/sessionId) |
-| `fetchTickets` (158) | session → ticket types (quota, priceInCents, promo flags) |
-| `showSessionsByMovieId` (173) | session picker keyboard |
-| `showTicketSelection` (214) | ticket-type picker keyboard + `/suball` promo shortcut |
-| `handleSmartInput` (256) | text router: seat link, movie link, UUID, numeric session, alias, plain search |
-| `handleMessage` (360) | chat-id-gated command dispatch → smart input fallback |
-| `sendRealtimeDashboard` (435) | per-subscription ticket status board, editable + refresh button |
-| `handleCallbackQuery` (489) | all inline button routing |
-| `startTelegramPolling` (631) | infinite getUpdates long-poll loop; fire-and-forget |
-| `runProbeCycle` (656) | per-sub ticket probe; alerts on quota>0 & !LimitReached |
-| `main` (721) | startup: commands + hello + polling + probe interval |
+| Symbol | Role | Module |
+|--------|------|--------|
+| `TG_BOT_TOKEN` `TG_CHAT_ID` | hardcoded credentials — treat as secret, never log/echo | src/config.js |
+| `CHECK_INTERVAL_MS` | probe cadence, 60s | src/config.js |
+| `COMMON_HEADERS` | spoofed browser headers for api.tgv.com.my | src/config.js |
+| `escapeHtml` | HTML-escape dynamic content before Telegram HTML messages | src/util.js |
+| `safeDecode` / `parseCallback` | callback_data decode + `|`/legacy-underscore parser | src/payload.js |
+| `callTgApi` | axios POST to api.telegram.org, swallows errors → null | src/telegram.js |
+| `notifyUser` | sendMessage with HTML + optional reply_markup | src/telegram.js |
+| `setupBotCommands` | setMyCommands for the 5 slash commands | src/telegram.js |
+| `sessionCache` | Map `cinema_session` → {movieName, showTime, tickets} for callback handling | src/store.js |
+| `load/saveSubscriptions` | JSON file state; save = full rewrite, sync | src/store.js |
+| `getSubscriptions` / `setSubscriptions` | the ONLY accessors to the live `subscriptions` array | src/store.js |
+| `generateUserSessionId` | crypto.randomBytes hex, per tickets request | src/tgv-api.js |
+| `getTodayBusinessDate` | Asia/Kuala_Lumpur date, en-CA → YYYY-MM-DD | src/tgv-api.js |
+| `fetchMovieByItemKey` | itemkey → movie recid; tries 2 endpoints, falls back to now-showing list | src/tgv-api.js |
+| `fetchMovieSessions` | movieid+date+cinema → session list (time/screen/sessionId) | src/tgv-api.js |
+| `fetchTickets` | session → ticket types (quota, priceInCents, promo flags) | src/tgv-api.js |
+| `showSessionsByMovieId` | session picker keyboard | src/views.js |
+| `showTicketSelection` | ticket-type picker keyboard + `/suball` promo shortcut | src/views.js |
+| `sendRealtimeDashboard` | per-subscription ticket status board, editable + refresh button | src/views.js |
+| `handleSmartInput` | text router: seat link, movie link, UUID, numeric session, alias, plain search | src/handlers.js |
+| `handleMessage` | chat-id-gated command dispatch → smart input fallback | src/handlers.js |
+| `handleCallbackQuery` | all inline button routing | src/handlers.js |
+| `runProbeCycle` | per-sub ticket probe; alerts on quota>0 & !LimitReached | src/probe.js |
+| `startTelegramPolling` | infinite getUpdates long-poll loop; fire-and-forget | src/app.js |
+| `main` | startup: commands + hello + polling + probe interval | src/app.js |
 
 ## CONVENTIONS
 - Chinese comments and Chinese emoji-heavy Telegram copy — keep this style in new code.
 - Raw Telegram Bot API through `callTgApi`/axios. The `node-telegram-bot-api` dependency is **dead** — do not start using it.
 - Hardcoded domain constants: cinema `VIV`, `areaCategory '0000000009'`, promo ticket codes `['5785','5759','6336']`.
-- Persistence: mutate module-global `subscriptions`, call `saveSubscriptions` on change. No other state files.
+- Persistence: read/mutate the live `subscriptions` array ONLY via `getSubscriptions()`/`setSubscriptions()` from src/store.js, call `saveSubscriptions` on change. No other state files. Do NOT cache a subscriptions reference across calls — `/del` replaces the array.
 - Async flow: `main()` not awaited; both loops launched fire-and-forget. Never await `startTelegramPolling()` (infinite loop).
 - Error style: TGV fetch errors → return null / empty and let callers degrade gracefully; `failCount`-based auto-removal (>=15).
 
 ## ANTI-PATTERNS (THIS PROJECT)
-- **Do NOT reproduce the values of `TG_BOT_TOKEN`/`TG_CHAT_ID`** (monitor.js:7-8) in docs, logs, or commits. Never print them.
-- callback_data parsers use `split('_')` — any underscore inside a payload (e.g. movie alias) corrupts routing. Keep encoded payloads underscore-free or escape them.
+- **Do NOT reproduce the values of `TG_BOT_TOKEN`/`TG_CHAT_ID`** (now in src/config.js) in docs, logs, or commits. Never print them.
+- callback_data now uses a `|` separator with IDs only (parsed by `parseCallback` in src/payload.js); the legacy `split('_')` scheme is still accepted for old messages but must not be used for new payloads. Keep encoded payloads underscore-free — an underscore can still corrupt the legacy-format fallback.
 - A `node:test` suite lives in `test/` (unit + child-process, fully offline — axios is stubbed) and `npm test` runs it via `node --test`.
 - Don't add new persistence files — extend the existing load/save pair.
 - Don't change empty `catch {}` blocks into loggers without intent: they implement silent endpoint failover (try next endpoint / mark probe failed).
@@ -88,6 +107,6 @@ No build/lint/format tooling exists.
 ## NOTES
 - TGV business day is Asia/Kuala_Lumpur; date math uses `en-CA` locale strings (YYYY-MM-DD).
 - `subscriptions.json` is live runtime state: entries carry `alerted`/`failCount` — do not hand-edit while bot runs (load happens once at startup).
-- Movie titles in callback payloads are `encodeURIComponent`-ed; `showTime` is `HH:MM` derived from `showtimemy` (substring 11-16 of the ISO string).
+- `showTime` is `HH:MM` derived from `showtimemy` (substring 11-16 of the ISO string). Movie titles no longer travel in callback payloads (IDs only); they are recovered from `sessionCache` in src/store.js.
 - `package.json` declares `"main": "index.js"` but no index.js exists — entry is `node monitor.js`.
 - Alert detection quirk: `quantityAvailablePerOrder > 0` AND description does NOT contain "Today's Promotion Limit Reached".

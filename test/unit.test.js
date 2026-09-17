@@ -9,7 +9,7 @@ const crypto = require('node:crypto');
 const axios = require('axios');
 const monitor = require('../monitor.js');
 
-const MONITOR_PATH = path.join(__dirname, '..', 'monitor.js');
+const SRC_DIR = path.join(__dirname, '..', 'src');
 const DATA_FILE = path.join(__dirname, '..', 'subscriptions.json');
 
 const sha256 = (file) => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
@@ -75,7 +75,10 @@ test('parseCallback returns null for unparseable input', () => {
 });
 
 test('every callback_data template stays within the 64-byte Telegram limit', () => {
-  const src = fs.readFileSync(MONITOR_PATH, 'utf8');
+  const src = fs.readdirSync(SRC_DIR)
+    .filter((f) => f.endsWith('.js'))
+    .map((f) => fs.readFileSync(path.join(SRC_DIR, f), 'utf8'))
+    .join('\n');
   const templates = [...src.matchAll(/callback_data:\s*`([^`]+)`/g)].map((m) => m[1]);
   const plain = [...src.matchAll(/callback_data:\s*'([^']+)'/g)].map((m) => m[1]);
 
