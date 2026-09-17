@@ -2,6 +2,7 @@
 
 **Generated:** 2026-09-06
 **Git:** not a git repository
+**Stale:** line numbers and the CODE MAP below predate the step-1 hardening of monitor.js — pending regeneration.
 
 ## OVERVIEW
 Single-file Node.js (CommonJS) Telegram bot that monitors ticket availability for TGV,
@@ -72,7 +73,7 @@ Full-file read (no LSP/codegraph available). All symbols live in monitor.js.
 ## ANTI-PATTERNS (THIS PROJECT)
 - **Do NOT reproduce the values of `TG_BOT_TOKEN`/`TG_CHAT_ID`** (monitor.js:7-8) in docs, logs, or commits. Never print them.
 - callback_data parsers use `split('_')` — any underscore inside a payload (e.g. movie alias) corrupts routing. Keep encoded payloads underscore-free or escape them.
-- No tests exist; `npm test` is a stub that exits 1. If adding tests, update the script first. Don't "fix" the stub silently.
+- A `node:test` suite lives in `test/` (unit + child-process, fully offline — axios is stubbed) and `npm test` runs it via `node --test`.
 - Don't add new persistence files — extend the existing load/save pair.
 - Don't change empty `catch {}` blocks into loggers without intent: they implement silent endpoint failover (try next endpoint / mark probe failed).
 
@@ -80,7 +81,7 @@ Full-file read (no LSP/codegraph available). All symbols live in monitor.js.
 ```bash
 node monitor.js    # run the bot (long-running; Ctrl+C to stop)
 npm install        # restore deps (axios, node-telegram-bot-api)
-npm test           # STUB — always exits 1, no test suite
+npm test           # node:test suite in test/ (offline; axios stubbed)
 ```
 No build/lint/format tooling exists.
 
