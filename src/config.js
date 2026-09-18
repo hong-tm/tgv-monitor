@@ -2,25 +2,29 @@ const path = require('path');
 const fs = require('fs');
 
 // === Telegram 配置 ===
-// 凭据不再硬编码：优先环境变量，其次仓库外的凭据文件（默认 /root/.config/tgv-monitor/env，权限 600）。
-// 该文件不在 git 仓库内，避免凭据进入版本历史。轮换后需重启进程。
+// 凭据不再硬编码，按优先级读取：环境变量 > 仓库外凭据文件 > 项目内 .env（已被 .gitignore 忽略）。
+// 支持项目内 .env 是为了与仓库中的 .env.example 样板保持一致，便于本地开发。
 const CRED_FILE = process.env.TGV_ENV_FILE || '/root/.config/tgv-monitor/env';
+const LOCAL_ENV_FILE = path.join(__dirname, '..', '.env');
 
-function loadCredFile() {
+function parseEnvText(text) {
+  const out = {};
+  for (const line of text.split('\n')) {
+    const m = line.match(/^\s*([A-Z_]+)\s*=\s*(.*)$/);
+    if (m) out[m[1]] = m[2].trim();
+  }
+  return out;
+}
+
+function readEnvFile(file) {
   try {
-    const text = fs.readFileSync(CRED_FILE, 'utf8');
-    const out = {};
-    for (const line of text.split('\n')) {
-      const m = line.match(/^\s*([A-Z_]+)\s*=\s*(.*)$/);
-      if (m) out[m[1]] = m[2].trim();
-    }
-    return out;
+    return parseEnvText(fs.readFileSync(file, 'utf8'));
   } catch (e) {
     return {};
   }
 }
 
-const fileCreds = loadCredFile();
+const fileCreds = { ...readEnvFile(CRED_FILE), ...readEnvFile(LOCAL_ENV_FILE) };
 
 const TG_BOT_TOKEN = process.env.TG_BOT_TOKEN || fileCreds.TG_BOT_TOKEN || '';
 const TG_CHAT_ID = process.env.TG_CHAT_ID || fileCreds.TG_CHAT_ID || '';
