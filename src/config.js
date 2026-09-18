@@ -1,8 +1,30 @@
 const path = require('path');
+const fs = require('fs');
 
 // === Telegram 配置 ===
-const TG_BOT_TOKEN = '***REDACTED-TOKEN***';
-const TG_CHAT_ID = '***REDACTED-CHAT-ID***';
+// 凭据不再硬编码：优先环境变量，其次仓库外的凭据文件（默认 /root/.config/tgv-monitor/env，权限 600）。
+// 该文件不在 git 仓库内，避免凭据进入版本历史。轮换后需重启进程。
+const CRED_FILE = process.env.TGV_ENV_FILE || '/root/.config/tgv-monitor/env';
+
+function loadCredFile() {
+  try {
+    const text = fs.readFileSync(CRED_FILE, 'utf8');
+    const out = {};
+    for (const line of text.split('\n')) {
+      const m = line.match(/^\s*([A-Z_]+)\s*=\s*(.*)$/);
+      if (m) out[m[1]] = m[2].trim();
+    }
+    return out;
+  } catch (e) {
+    return {};
+  }
+}
+
+const fileCreds = loadCredFile();
+
+const TG_BOT_TOKEN = process.env.TG_BOT_TOKEN || fileCreds.TG_BOT_TOKEN || '';
+const TG_CHAT_ID = process.env.TG_CHAT_ID || fileCreds.TG_CHAT_ID || '';
+
 const CHECK_INTERVAL_MS = 60 * 1000;
 const DATA_FILE = path.join(__dirname, '..', 'subscriptions.json');
 
@@ -14,10 +36,21 @@ const COMMON_HEADERS = {
   'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/152.0.0.0 Safari/537.36'
 };
 
+// 启动期校验：缺凭据时立即失败，而不是等到第一次调用 Telegram 才报 404
+function assertCredentials() {
+  const missing = [];
+  if (!TG_BOT_TOKEN) missing.push('TG_BOT_TOKEN');
+  if (!TG_CHAT_ID) missing.push('TG_CHAT_ID');
+  if (missing.length > 0) {
+    throw new Error(`缺少凭据 ${missing.join(', ')}：请设置环境变量，或写入 ${CRED_FILE}`);
+  }
+}
+
 module.exports = {
   TG_BOT_TOKEN,
   TG_CHAT_ID,
   CHECK_INTERVAL_MS,
   DATA_FILE,
-  COMMON_HEADERS
+  COMMON_HEADERS,
+  assertCredentials
 };

@@ -2,8 +2,9 @@
   "name": "tgv-monitor",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "monitor.js",
   "scripts": {
+    "start": "node monitor.js",
     "test": "node --test"
   },
   "keywords": [],
@@ -11,7 +12,6 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
-    "axios": "^1.20.0",
-    "node-telegram-bot-api": "^2.1.0"
+    "axios": "^1.20.0"
   }
 }

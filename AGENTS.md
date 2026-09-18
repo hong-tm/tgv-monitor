@@ -1,7 +1,7 @@
 # PROJECT KNOWLEDGE BASE
 
 **Generated:** 2026-09-06
-**Git:** repo root is `/root` (no remote); history: `c2b8de0` baseline → `1bd4b07` step-1 fixes → step-2 module split
+**Git:** repo root is `/root` (no remote); history: `c2b8de0` baseline → `1bd4b07` step-1 fixes → `24b5826` module split → step-3 hardening
 **Stale:** line numbers in the CODE MAP are approximate; the layout below reflects the step-2 module split.
 
 ## OVERVIEW
@@ -10,6 +10,14 @@ a Malaysian cinema chain (tgv.com.my). Polls the TGV boxoffice API every 60s and
 alerts the owner via Telegram when monitored promo tickets gain sellable quota.
 Stack: axios + raw Telegram Bot API over long-polling.
 Was a single 826-line file; split into `src/` modules in step 2 (`monitor.js` is now a 20-line entry shim).
+
+## CREDENTIALS
+Bot token and chat id are NOT in the repo. Loaded at startup from (in order):
+1. env `TG_BOT_TOKEN` / `TG_CHAT_ID`
+2. a dotenv-style file at `$TGV_ENV_FILE` (default `/root/.config/tgv-monitor/env`, mode 600, outside the git repo)
+
+`assertCredentials()` runs at the top of `main()` so a missing credential fails loudly at startup
+instead of surfacing later as a Telegram 404. To rotate: edit that file, then `pm2 startOrRestart ecosystem.config.js`.
 
 ## STRUCTURE
 ```
@@ -55,7 +63,8 @@ Split across `src/` (step 2); `monitor.js` is a thin pm2 entry shim that re-expo
 
 | Symbol | Role | Module |
 |--------|------|--------|
-| `TG_BOT_TOKEN` `TG_CHAT_ID` | hardcoded credentials — treat as secret, never log/echo | src/config.js |
+| `TG_BOT_TOKEN` `TG_CHAT_ID` | loaded from env or the out-of-repo credential file (see CREDENTIALS) — never log/echo | src/config.js |
+| `assertCredentials` | startup guard: throws if credentials are missing | src/config.js |
 | `CHECK_INTERVAL_MS` | probe cadence, 60s | src/config.js |
 | `COMMON_HEADERS` | spoofed browser headers for api.tgv.com.my | src/config.js |
 | `escapeHtml` | HTML-escape dynamic content before Telegram HTML messages | src/util.js |
@@ -63,7 +72,8 @@ Split across `src/` (step 2); `monitor.js` is a thin pm2 entry shim that re-expo
 | `callTgApi` | axios POST to api.telegram.org, swallows errors → null | src/telegram.js |
 | `notifyUser` | sendMessage with HTML + optional reply_markup | src/telegram.js |
 | `setupBotCommands` | setMyCommands for the 5 slash commands | src/telegram.js |
-| `sessionCache` | Map `cinema_session` → {movieName, showTime, tickets} for callback handling | src/store.js |
+| `sessionCache` | Map `cinema_session` → {movieName, showTime} for callback handling (no tickets) | src/store.js |
+| `cacheSession` | bounded writer for `sessionCache` (FIFO cap 500) — prefer over `sessionCache.set` | src/store.js |
 | `load/saveSubscriptions` | JSON file state; save = full rewrite, sync | src/store.js |
 | `getSubscriptions` / `setSubscriptions` | the ONLY accessors to the live `subscriptions` array | src/store.js |
 | `generateUserSessionId` | crypto.randomBytes hex, per tickets request | src/tgv-api.js |
@@ -90,7 +100,7 @@ Split across `src/` (step 2); `monitor.js` is a thin pm2 entry shim that re-expo
 - Error style: TGV fetch errors → return null / empty and let callers degrade gracefully; `failCount`-based auto-removal (>=15).
 
 ## ANTI-PATTERNS (THIS PROJECT)
-- **Do NOT reproduce the values of `TG_BOT_TOKEN`/`TG_CHAT_ID`** (now in src/config.js) in docs, logs, or commits. Never print them.
+- **Never hardcode credentials.** `TG_BOT_TOKEN`/`TG_CHAT_ID` come from env or the out-of-repo file in src/config.js's CREDENTIALS section. Never print or commit them.
 - callback_data now uses a `|` separator with IDs only (parsed by `parseCallback` in src/payload.js); the legacy `split('_')` scheme is still accepted for old messages but must not be used for new payloads. Keep encoded payloads underscore-free — an underscore can still corrupt the legacy-format fallback.
 - A `node:test` suite lives in `test/` (unit + child-process, fully offline — axios is stubbed) and `npm test` runs it via `node --test`.
 - Don't add new persistence files — extend the existing load/save pair.
@@ -108,5 +118,5 @@ No build/lint/format tooling exists.
 - TGV business day is Asia/Kuala_Lumpur; date math uses `en-CA` locale strings (YYYY-MM-DD).
 - `subscriptions.json` is live runtime state: entries carry `alerted`/`failCount` — do not hand-edit while bot runs (load happens once at startup).
 - `showTime` is `HH:MM` derived from `showtimemy` (substring 11-16 of the ISO string). Movie titles no longer travel in callback payloads (IDs only); they are recovered from `sessionCache` in src/store.js.
-- `package.json` declares `"main": "index.js"` but no index.js exists — entry is `node monitor.js`.
+- `package.json` `main` is `monitor.js`; `npm start` runs the bot. The dead `node-telegram-bot-api` dep was removed (a stale directory may remain in node_modules until `npm prune`).
 - Alert detection quirk: `quantityAvailablePerOrder > 0` AND description does NOT contain "Today's Promotion Limit Reached".

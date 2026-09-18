@@ -22,6 +22,16 @@ let subscriptions = loadSubscriptions();
 
 const sessionCache = new Map();
 
+// 有界缓存：只保留最近使用的条目，避免长期运行内存只增不减
+const MAX_SESSION_CACHE = 500;
+function cacheSession(key, value) {
+  if (sessionCache.size >= MAX_SESSION_CACHE && !sessionCache.has(key)) {
+    const oldest = sessionCache.keys().next().value;
+    if (oldest !== undefined) sessionCache.delete(oldest);
+  }
+  sessionCache.set(key, value);
+}
+
 function getSubscriptions() {
   return subscriptions;
 }
@@ -35,5 +45,6 @@ module.exports = {
   saveSubscriptions,
   getSubscriptions,
   setSubscriptions,
-  sessionCache
+  sessionCache,
+  cacheSession
 };

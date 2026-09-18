@@ -1,6 +1,6 @@
 const { notifyUser, callTgApi } = require('./telegram');
 const { fetchMovieByItemKey, fetchTickets } = require('./tgv-api');
-const { getSubscriptions, setSubscriptions, saveSubscriptions, sessionCache } = require('./store');
+const { getSubscriptions, setSubscriptions, saveSubscriptions, sessionCache, cacheSession } = require('./store');
 const { parseCallback } = require('./payload');
 const { showSessionsByMovieId, showTicketSelection, sendRealtimeDashboard } = require('./views');
 const { escapeHtml } = require('./util');
@@ -51,7 +51,7 @@ async function handleSmartInput(text, defaultCinemaId = 'VIV') {
     const movieInfo = itemKey ? await fetchMovieByItemKey(itemKey) : null;
     const uuidText = movieInfo ? `\n🆔 <b>Movie UUID:</b> <code>${escapeHtml(movieInfo.movieId)}</code>` : '';
 
-    sessionCache.set(`${cinemaId}_${sessionId}`, { movieName, showTime: '', tickets: null });
+    cacheSession(`${cinemaId}_${sessionId}`, { movieName, showTime: '' });
 
     const markup = {
       inline_keyboard: [
@@ -246,7 +246,7 @@ async function handleCallbackQuery(cb) {
     const cached = sessionCache.get(`${cinemaId}_${sessionId}`);
     const movieName = cached?.movieName || '电影';
     const showTime = cached?.showTime || '';
-    const tickets = cached?.tickets || await fetchTickets(cinemaId, sessionId);
+    const tickets = await fetchTickets(cinemaId, sessionId);
 
     const promoTickets = tickets.filter(t => 
       t.descriptionAlt?.includes('PROMO') || 
@@ -295,7 +295,7 @@ async function handleCallbackQuery(cb) {
     const cached = sessionCache.get(`${cinemaId}_${sessionId}`);
     const movieName = cached?.movieName || '电影';
     const showTime = cached?.showTime || '';
-    const tickets = cached?.tickets || await fetchTickets(cinemaId, sessionId);
+    const tickets = await fetchTickets(cinemaId, sessionId);
     const targetTicket = tickets.find(t => String(t.ticketTypeCode) === targetCode);
 
     if (!targetTicket) {

@@ -1,6 +1,6 @@
 const { notifyUser, callTgApi } = require('./telegram');
 const { fetchMovieSessions, fetchTickets, getTodayBusinessDate } = require('./tgv-api');
-const { sessionCache, getSubscriptions } = require('./store');
+const { sessionCache, cacheSession, getSubscriptions } = require('./store');
 const { escapeHtml } = require('./util');
 const { TG_CHAT_ID } = require('./config');
 
@@ -25,7 +25,7 @@ async function showSessionsByMovieId(movieId, cinemaId = 'VIV', targetDate = nul
   const keyboard = [];
   let row = [];
   for (const s of sessions) {
-    sessionCache.set(`${cinemaId}_${s.sessionId}`, { movieName, showTime: s.time, tickets: null });
+    cacheSession(`${cinemaId}_${s.sessionId}`, { movieName, showTime: s.time });
     row.push({
       text: `🕒 ${s.time} (${s.screen})`,
       callback_data: `pick|${cinemaId}|${s.sessionId}|${s.time}`
@@ -56,7 +56,7 @@ async function showTicketSelection(cinemaId, sessionId, movieName, showTime) {
       return await notifyUser(`❌ 无法获取场次 <code>${escapeHtml(sessionId)}</code> 的票种数据，可能已停售。`);
     }
 
-    sessionCache.set(`${cinemaId}_${sessionId}`, { movieName, showTime, tickets });
+    cacheSession(`${cinemaId}_${sessionId}`, { movieName, showTime });
 
     const inlineKeyboard = [];
     for (const t of tickets) {
