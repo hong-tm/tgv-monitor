@@ -118,5 +118,5 @@ No build/lint/format tooling exists.
 - TGV business day is Asia/Kuala_Lumpur; date math uses `en-CA` locale strings (YYYY-MM-DD).
 - `subscriptions.json` is live runtime state: entries carry `alerted`/`failCount` — do not hand-edit while bot runs (load happens once at startup).
 - `showTime` is `HH:MM` derived from `showtimemy` (substring 11-16 of the ISO string). Movie titles no longer travel in callback payloads (IDs only); they are recovered from `sessionCache` in src/store.js.
-- `package.json` `main` is `monitor.js`; `npm start` runs the bot. The dead `node-telegram-bot-api` dep was removed (a stale directory may remain in node_modules until `npm prune`).
+- `package.json` `main` is `monitor.js`; `npm start` runs the bot. Sole dependency is `axios` (`node-telegram-bot-api` was removed and pruned).
 - Alert detection quirk: `quantityAvailablePerOrder > 0` AND description does NOT contain "Today's Promotion Limit Reached".
