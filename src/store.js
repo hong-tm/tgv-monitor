@@ -40,11 +40,35 @@ function setSubscriptions(subs) {
   subscriptions = subs;
 }
 
+// 定位或新建 (sessionId, cinemaId) 监控项；只改内存，落盘由调用方决定
+function upsertSubscription(cinemaId, sessionId, movieName, showTime) {
+  let sub = getSubscriptions().find(s => s.sessionId === sessionId && s.cinemaId === cinemaId);
+  if (!sub) {
+    sub = {
+      sessionId,
+      cinemaId,
+      movieTitle: movieName,
+      showTime: showTime,
+      areaCategory: '0000000009',
+      targetCodes: [],
+      targetDetails: {},
+      alerted: false,
+      failCount: 0
+    };
+    getSubscriptions().push(sub);
+  } else {
+    sub.movieTitle = movieName;
+    sub.showTime = showTime;
+  }
+  return sub;
+}
+
 module.exports = {
   loadSubscriptions,
   saveSubscriptions,
   getSubscriptions,
   setSubscriptions,
   sessionCache,
-  cacheSession
+  cacheSession,
+  upsertSubscription
 };
