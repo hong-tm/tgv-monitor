@@ -4,6 +4,8 @@ const fs = require('fs');
 // === Telegram 配置 ===
 // 凭据不再硬编码，按优先级读取：环境变量 > 仓库外凭据文件 > 项目内 .env（已被 .gitignore 忽略）。
 // 支持项目内 .env 是为了与仓库中的 .env.example 样板保持一致，便于本地开发。
+// 下方 fileCreds 按 { ...LOCAL_ENV_FILE, ...CRED_FILE } 合并：仓库外凭据文件优先，
+// 项目内一份陈旧 .env 顶不掉生产凭据。
 const CRED_FILE = process.env.TGV_ENV_FILE || '/root/.config/tgv-monitor/env';
 const LOCAL_ENV_FILE = path.join(__dirname, '..', '.env');
 
@@ -24,7 +26,7 @@ function readEnvFile(file) {
   }
 }
 
-const fileCreds = { ...readEnvFile(CRED_FILE), ...readEnvFile(LOCAL_ENV_FILE) };
+const fileCreds = { ...readEnvFile(LOCAL_ENV_FILE), ...readEnvFile(CRED_FILE) };
 
 const TG_BOT_TOKEN = process.env.TG_BOT_TOKEN || fileCreds.TG_BOT_TOKEN || '';
 const TG_CHAT_ID = process.env.TG_CHAT_ID || fileCreds.TG_CHAT_ID || '';

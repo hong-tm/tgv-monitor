@@ -9,6 +9,10 @@ module.exports = {
       cwd: '/root/tgv-monitor',
       exec_mode: 'fork',
       instances: 1,
+      // 本机无 IPv6 默认路由，但 api.telegram.org 有 AAAA 记录：
+      // Node 默认 verbatim 会先连 IPv6 → ENETUNREACH / ETIMEDOUT。强制 IPv4 优先。
+      // 用 NODE_OPTIONS（而非 node_args）：pm2 fork 模式下可直接从 /proc/<pid>/environ 验证已生效。
+      env: { NODE_OPTIONS: '--dns-result-order=ipv4first' },
       autorestart: true,
       max_restarts: 10,
       restart_delay: 3000
