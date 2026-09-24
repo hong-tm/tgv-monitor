@@ -7,3 +7,6 @@ subscriptions.json.bak
 # 依赖与索引（本地产物）
 node_modules/
 .codegraph/
+
+# agent 工具运行时状态（omo 会话续跑标记等），不入库
+.omo/
