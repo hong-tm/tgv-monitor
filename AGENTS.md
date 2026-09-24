@@ -110,7 +110,7 @@ Split across `src/`; `monitor.js` is a thin pm2 entry shim. It re-exports only `
 - Transport is the raw Telegram Bot API through `callTgApi`/axios, not a bot library.
 - Hardcoded domain constants: `DEFAULT_AREA_CATEGORY = '0000000009'` and `PROMO_TICKET_CODES = ['5785','5759','6336']` live in `src/config.js`; cinema `VIV` remains the default argument value in several functions. `src/views.js`'s inline `isPromo` predicate (used for the 🔥 emoji) is a DIFFERENT predicate from the `suball` promo filter and must stay separate.
 - Persistence: read or mutate the live `subscriptions` array ONLY via `getSubscriptions()`/`setSubscriptions()` from src/store.js:35,39, and call `saveSubscriptions` on change. No other state files. Do NOT cache a subscriptions reference across calls, `/del` replaces the array.
-- Async flow: `main()` is not awaited (monitor.js:11). Both boot loops launch fire-and-forget (src/app.js:53-55). Never await `startTelegramPolling()`, it is an infinite loop.
+- Async flow: `main()` is not awaited (monitor.js:10). Both boot loops launch fire-and-forget (src/app.js:53-55). Never await `startTelegramPolling()`, it is an infinite loop.
 - Error style: TGV fetch errors return null or empty and callers degrade gracefully; probe failures bump `failCount` and auto-remove at 15.
 - No lint, format, or build tooling exists, and there are no devDependencies. Do not introduce eslint/prettier/tsconfig and claim project precedent.
 - pm2 runs one fork instance. ecosystem.config.js pins `NODE_OPTIONS=--dns-result-order=ipv4first` because api.telegram.org resolves AAAA and this host has no IPv6 route.
