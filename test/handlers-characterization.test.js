@@ -475,3 +475,39 @@ test('unknown action and unparseable payload both fall back to the retry hint', 
   await handleCallbackQuery({ id: '1', data: 'garbage', message: { message_id: 2 } });
   assert.equal(lastSend(sent).payload.text, '请重新发送电影名或链接后再试');
 });
+
+// --- 15 ----------------------------------------------------------------------
+
+test('movie-link whose lookup fails falls through to the plain-search tail', async (t) => {
+  isolate(t);
+  mockWrites(t);
+  const { sent } = mockAxios(t);
+
+  await handleSmartInput('/movies/spider-man');
+
+  assert.equal(sent.length, 3);
+  assert.equal(sent[0].payload.text, '🔎 正在解析电影别名: <code>spider-man</code>');
+  assert.equal(sent[1].payload.text, '🔎 正在搜索电影：<b>/movies/spider-man</b>');
+  assert.equal(
+    sent[2].payload.text,
+    '❌ 未能匹配到电影《/movies/spider-man》，若该片尚未定档或放排片，TGV 系统内暂无记录。'
+  );
+});
+
+// --- 16 ----------------------------------------------------------------------
+
+test('alias whose lookup fails falls through to the plain-search tail', async (t) => {
+  isolate(t);
+  mockWrites(t);
+  const { sent } = mockAxios(t);
+
+  await handleSmartInput('spider-man');
+
+  assert.equal(sent.length, 3);
+  assert.equal(sent[0].payload.text, '🔎 正在根据别名检索: <code>spider-man</code>');
+  assert.equal(sent[1].payload.text, '🔎 正在搜索电影：<b>spider-man</b>');
+  assert.equal(
+    sent[2].payload.text,
+    '❌ 未能匹配到电影《spider-man》，若该片尚未定档或放排片，TGV 系统内暂无记录。'
+  );
+});
