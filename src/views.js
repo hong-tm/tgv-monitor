@@ -142,8 +142,39 @@ async function sendRealtimeDashboard(messageIdToEdit = null) {
   }
 }
 
+async function sendHelp() {
+  return await notifyUser(
+    `🎬 <b>TGV 极速抢票监控系统</b>\n\n` +
+    `快捷指令：\n` +
+    `🔹 <code>/uuid &lt;链接或UUID&gt;</code> - 查 UUID 并列出全天排片\n` +
+    `🔹 <code>/check</code> - 实时票况看板（支持原地刷新）\n` +
+    `🔹 <code>/list</code> - 查看监控列表\n` +
+    `🔹 <code>/del</code> - 选择删除已监控场次\n` +
+    `🔹 <code>/status</code> - 运行健康状况\n\n` +
+    `直接发送任意选座直链、电影链接或电影名均可智能处理。`
+  );
+}
+
+async function sendSubscriptionList() {
+  if (getSubscriptions().length === 0) {
+    return await notifyUser('ℹ️ 当前无监控任务。直接发送电影链接或编号即可添加。');
+  }
+  let reply = `📋 <b>当前监控任务列表 (${getSubscriptions().length})：</b>\n\n`;
+  for (const s of getSubscriptions()) {
+    const codeNames = s.targetCodes.map(c => s.targetDetails?.[c]?.name || c).join('\n  • ');
+    reply += `🎬 <b>《${escapeHtml(s.movieTitle || '未知电影')}》</b>\n` +
+             `⏰ 时间: <code>${escapeHtml(s.showTime || '未记录')}</code> | 影院: ${escapeHtml(s.cinemaId)} (ID: <code>${escapeHtml(s.sessionId)}</code>)\n` +
+             `🎯 监控票种:\n  • ${escapeHtml(codeNames)}\n` +
+             `🔔 状态: ${s.alerted ? '🚨 已报警' : '💤 静默轮询中'}\n` +
+             `───────────────────\n`;
+  }
+  return await notifyUser(reply);
+}
+
 module.exports = {
   showSessionsByMovieId,
   showTicketSelection,
-  sendRealtimeDashboard
+  sendRealtimeDashboard,
+  sendHelp,
+  sendSubscriptionList
 };
