@@ -130,7 +130,7 @@ Split across `src/`; `monitor.js` is a thin pm2 entry shim. It re-exports only `
 node monitor.js              # run the bot in foreground (long-running)
 npm start                    # same as node monitor.js
 npm install                  # restore deps (axios only)
-npm test                     # node --test; test/ offline, axios stubbed, 46 tests
+npm test                     # node --test; test/ offline, axios stubbed, 48 tests
 pm2 startOrRestart ecosystem.config.js   # (re)start under pm2
 ```
 No build, lint, or format tooling exists.
