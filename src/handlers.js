@@ -7,7 +7,6 @@ const { escapeHtml } = require('./util');
 const { TG_CHAT_ID, PROMO_TICKET_CODES } = require('./config');
 const { classifyInput } = require('./input-classifier');
 
-// 智能总路由
 async function handleSmartInput(text, defaultCinemaId = 'VIV') {
   const c = classifyInput(text, defaultCinemaId);
 
@@ -89,7 +88,6 @@ async function handleSmartInput(text, defaultCinemaId = 'VIV') {
   return await notifyUser(`❌ 未能匹配到电影《${escapeHtml(c.input)}》，若该片尚未定档或放排片，TGV 系统内暂无记录。`);
 }
 
-// 消息监听
 async function handleMessage(msg) {
   if (!msg || !msg.text) return;
   if (String(msg.chat.id) !== String(TG_CHAT_ID)) return;
@@ -140,11 +138,9 @@ async function handleMessage(msg) {
     }
   }
 
-  // 统一送入智能解析
   await handleSmartInput(text);
 }
 
-// 按钮回调处理
 async function handleCallbackQuery(cb) {
   if (!cb || !cb.data) return;
   const msgId = cb.message?.message_id;
@@ -161,14 +157,12 @@ async function handleCallbackQuery(cb) {
     return await sendRealtimeDashboard(msgId);
   }
 
-  // 展开某天整部电影所有排片
   if (action === 'showall') {
     const [cinemaId, movieId, targetDate] = args;
     await callTgApi('answerCallbackQuery', { callback_query_id: cb.id, text: '加载排片中...' });
     return await showSessionsByMovieId(movieId, cinemaId, targetDate);
   }
 
-  // 快速进入单场票种选择
   if (action === 'quicksub') {
     const [cinemaId, sessionId, legacyName] = args;
     const cached = sessionCache.get(`${cinemaId}_${sessionId}`);

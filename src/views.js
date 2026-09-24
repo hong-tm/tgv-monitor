@@ -4,7 +4,6 @@ const { sessionCache, cacheSession, getSubscriptions } = require('./store');
 const { escapeHtml } = require('./util');
 const { TG_CHAT_ID } = require('./config');
 
-// 展示排片面板
 async function showSessionsByMovieId(movieId, cinemaId = 'VIV', targetDate = null, movieNameFallback = null) {
   const date = targetDate || getTodayBusinessDate();
   await notifyUser(`🔍 正在检索电影 UUID <code>${escapeHtml(movieId)}</code> 在 <code>${escapeHtml(date)}</code> 的排片...`);
@@ -46,7 +45,6 @@ async function showSessionsByMovieId(movieId, cinemaId = 'VIV', targetDate = nul
   return await notifyUser(msg, { inline_keyboard: keyboard });
 }
 
-// 展示票种选择
 async function showTicketSelection(cinemaId, sessionId, movieName, showTime) {
   await notifyUser(`⏳ 正在读取 <b>《${escapeHtml(movieName)}》</b> (场次 <code>${escapeHtml(sessionId)}</code>) 的可用票种...`);
 
@@ -88,7 +86,6 @@ async function showTicketSelection(cinemaId, sessionId, movieName, showTime) {
   }
 }
 
-// 实时看板
 async function sendRealtimeDashboard(messageIdToEdit = null) {
   if (getSubscriptions().length === 0) {
     const emptyMsg = 'ℹ️ 当前无监控任务。';

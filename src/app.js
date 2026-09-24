@@ -3,7 +3,6 @@ const { handleMessage, handleCallbackQuery } = require('./handlers');
 const { runProbeCycle } = require('./probe');
 const { CHECK_INTERVAL_MS, assertCredentials } = require('./config');
 
-// Telegram 长轮询
 let lastUpdateId = 0;
 
 // offset:-1 是 Telegram 的「丢弃积压」语义：返回最后一条 update 并清空队列，

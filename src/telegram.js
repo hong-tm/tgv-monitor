@@ -1,7 +1,6 @@
 const axios = require('axios');
 const { TG_BOT_TOKEN, TG_CHAT_ID } = require('./config');
 
-// === Telegram 原生 API 封装 ===
 async function callTgApi(method, data = {}) {
   const url = `https://api.telegram.org/bot${TG_BOT_TOKEN}/${method}`;
   try {

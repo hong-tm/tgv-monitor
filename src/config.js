@@ -1,7 +1,6 @@
 const path = require('path');
 const fs = require('fs');
 
-// === Telegram 配置 ===
 // 凭据不再硬编码，按优先级读取：环境变量 > 仓库外凭据文件 > 项目内 .env（已被 .gitignore 忽略）。
 // 支持项目内 .env 是为了与仓库中的 .env.example 样板保持一致，便于本地开发。
 // 下方 fileCreds 按 { ...LOCAL_ENV_FILE, ...CRED_FILE } 合并：仓库外凭据文件优先，

@@ -3,7 +3,6 @@ const { fetchTickets } = require('./tgv-api');
 const { getSubscriptions, saveSubscriptions } = require('./store');
 const { escapeHtml } = require('./util');
 
-// 探测轮询
 let probeRunning = false;
 async function runProbeCycle() {
   if (probeRunning) {

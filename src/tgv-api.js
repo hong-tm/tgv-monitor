@@ -10,7 +10,6 @@ function getTodayBusinessDate() {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kuala_Lumpur' });
 }
 
-// 1. 通过 itemkey 获取电影详情与 UUID
 async function fetchMovieByItemKey(itemKey) {
   const cleanKey = itemKey.trim().toLowerCase();
   const endpoints = [
@@ -40,7 +39,6 @@ async function fetchMovieByItemKey(itemKey) {
   return null;
 }
 
-// 2. 获取指定日期、指定影院的全天排片场次
 async function fetchMovieSessions(movieId, cinemaId = 'VIV', date = null) {
   const businessDate = date || getTodayBusinessDate();
   const url = 'https://api.tgv.com.my/api/boxoffice/v1/moviesession_get';
@@ -83,7 +81,6 @@ async function fetchMovieSessions(movieId, cinemaId = 'VIV', date = null) {
   }
 }
 
-// 3. 获取具体场次票种
 async function fetchTickets(cinemaId, sessionId, areaCategory = DEFAULT_AREA_CATEGORY) {
   const url = 'https://api.tgv.com.my/api/boxoffice/v1/moviesession_gettickets';
   const payload = {
