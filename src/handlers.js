@@ -1,6 +1,6 @@
 const { notifyUser, callTgApi } = require('./telegram');
 const { fetchMovieByItemKey, fetchTickets } = require('./tgv-api');
-const { getSubscriptions, setSubscriptions, saveSubscriptions, sessionCache, cacheSession } = require('./store');
+const { getSubscriptions, setSubscriptions, saveSubscriptions, sessionCache, cacheSession, upsertSubscription } = require('./store');
 const { parseCallback } = require('./payload');
 const { showSessionsByMovieId, showTicketSelection, sendRealtimeDashboard } = require('./views');
 const { escapeHtml } = require('./util');
@@ -235,24 +235,7 @@ async function handleCallbackQuery(cb) {
       return await callTgApi('answerCallbackQuery', { callback_query_id: cb.id, text: '未检测到促销票种', show_alert: true });
     }
 
-    let sub = getSubscriptions().find(s => s.sessionId === sessionId && s.cinemaId === cinemaId);
-    if (!sub) {
-      sub = {
-        sessionId,
-        cinemaId,
-        movieTitle: movieName,
-        showTime: showTime,
-        areaCategory: '0000000009',
-        targetCodes: [],
-        targetDetails: {},
-        alerted: false,
-        failCount: 0
-      };
-      getSubscriptions().push(sub);
-    } else {
-      sub.movieTitle = movieName;
-      sub.showTime = showTime;
-    }
+    const sub = upsertSubscription(cinemaId, sessionId, movieName, showTime);
 
     for (const pt of promoTickets) {
       const code = String(pt.ticketTypeCode);
@@ -279,24 +262,7 @@ async function handleCallbackQuery(cb) {
       return await callTgApi('answerCallbackQuery', { callback_query_id: cb.id, text: '票种已失效', show_alert: true });
     }
 
-    let sub = getSubscriptions().find(s => s.sessionId === sessionId && s.cinemaId === cinemaId);
-    if (!sub) {
-      sub = {
-        sessionId,
-        cinemaId,
-        movieTitle: movieName,
-        showTime: showTime,
-        areaCategory: '0000000009',
-        targetCodes: [],
-        targetDetails: {},
-        alerted: false,
-        failCount: 0
-      };
-      getSubscriptions().push(sub);
-    } else {
-      sub.movieTitle = movieName;
-      sub.showTime = showTime;
-    }
+    const sub = upsertSubscription(cinemaId, sessionId, movieName, showTime);
 
     if (sub.targetCodes.includes(targetCode)) {
       return await callTgApi('answerCallbackQuery', { callback_query_id: cb.id, text: '已在监控中', show_alert: true });
