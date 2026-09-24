@@ -5,18 +5,13 @@ const { parseCallback } = require('./payload');
 const { showSessionsByMovieId, showTicketSelection, sendRealtimeDashboard } = require('./views');
 const { escapeHtml } = require('./util');
 const { TG_CHAT_ID } = require('./config');
+const { classifyInput } = require('./input-classifier');
 
 // 智能总路由
 async function handleSmartInput(text, defaultCinemaId = 'VIV') {
-  const isExplicitUuidCmd = /^\/?uuid\b/i.test(text.trim()) || /@\w+\s+uuid\b/i.test(text.trim());
+  const c = classifyInput(text, defaultCinemaId);
 
-  // 清洗参数：去掉 @bot、命令前缀
-  let input = text.trim()
-    .replace(/^@\w+\s*/i, '')
-    .replace(/^\/?(uuid|add)\s*/i, '')
-    .trim();
-
-  if (!input) {
+  if (c.kind === 'empty') {
     const markup = {
       inline_keyboard: [
         [{ text: '✍️ 点击自动填入 /uuid 并预留空格', switch_inline_query_current_chat: 'uuid ' }]
@@ -29,16 +24,9 @@ async function handleSmartInput(text, defaultCinemaId = 'VIV') {
     );
   }
 
-  // 1. 如果是选座直链：/select-seats/{itemkey}/{date}/{cinema}/{sessionid}
-  if (input.includes('/select-seats/')) {
-    const parts = input.split('/');
-    const sessionId = parts[parts.length - 1];
-    const cinemaId = parts[parts.length - 2] || defaultCinemaId;
-    const targetDate = parts[parts.length - 3]; // 提取链接里的日期如 2026-09-08
-    const itemKey = parts[parts.length - 4] || '';
-    const movieName = decodeURIComponent(itemKey).replace(/-/g, ' ');
+  if (c.kind === 'seat-link') {
+    const { itemKey, movieName, cinemaId, sessionId, targetDate, isExplicitUuidCmd } = c;
 
-    // 如果用户明确使用了 /uuid 指令，或者需要查整部排片：直接反查 UUID 并拉取当天排片
     if (isExplicitUuidCmd) {
       await notifyUser(`🎯 正在从选座链接解析电影别名 <code>${escapeHtml(itemKey)}</code> 与排片日期 <code>${escapeHtml(targetDate)}</code>...`);
       const movieInfo = await fetchMovieByItemKey(itemKey);
@@ -47,7 +35,6 @@ async function handleSmartInput(text, defaultCinemaId = 'VIV') {
       }
     }
 
-    // 若不是 /uuid 指令，则提供两个选项让用户选
     const movieInfo = itemKey ? await fetchMovieByItemKey(itemKey) : null;
     const uuidText = movieInfo ? `\n🆔 <b>Movie UUID:</b> <code>${escapeHtml(movieInfo.movieId)}</code>` : '';
 
@@ -69,47 +56,37 @@ async function handleSmartInput(text, defaultCinemaId = 'VIV') {
     );
   }
 
-  // 2. 电影详情链接：/movies/details/{itemkey}
-  if (input.includes('/movies/details/') || input.includes('/movies/')) {
-    const match = input.match(/\/movies\/(?:details\/)?([^\/?#]+)/i);
-    if (match && match[1]) {
-      const itemKey = match[1];
-      await notifyUser(`🔎 正在解析电影别名: <code>${escapeHtml(itemKey)}</code>`);
-      const movieInfo = await fetchMovieByItemKey(itemKey);
-      if (movieInfo) {
-        return await showSessionsByMovieId(movieInfo.movieId, defaultCinemaId, null, movieInfo.name);
-      }
-    }
-  }
-
-  // 3. 包含标准的 36 位 UUID
-  const uuidMatch = input.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
-  if (uuidMatch) {
-    return await showSessionsByMovieId(uuidMatch[0], defaultCinemaId);
-  }
-
-  // 4. 纯数字场次号
-  if (/^\d{5,8}$/.test(input)) {
-    return await showTicketSelection(defaultCinemaId, input, `场次 ${input}`, '');
-  }
-
-  // 5. itemkey 连字符别名（如 spider-man-brand-new-day）
-  if (/^[a-z0-9-]+$/.test(input) && input.includes('-')) {
-    await notifyUser(`🔎 正在根据别名检索: <code>${escapeHtml(input)}</code>`);
-    const movieInfo = await fetchMovieByItemKey(input);
+  if (c.kind === 'movie-link') {
+    await notifyUser(`🔎 正在解析电影别名: <code>${escapeHtml(c.itemKey)}</code>`);
+    const movieInfo = await fetchMovieByItemKey(c.itemKey);
     if (movieInfo) {
       return await showSessionsByMovieId(movieInfo.movieId, defaultCinemaId, null, movieInfo.name);
     }
   }
 
-  // 6. 纯文本输入搜索
-  await notifyUser(`🔎 正在搜索电影：<b>${escapeHtml(input)}</b>`);
-  const movieInfo = await fetchMovieByItemKey(input);
+  if (c.kind === 'uuid') {
+    return await showSessionsByMovieId(c.uuid, defaultCinemaId);
+  }
+
+  if (c.kind === 'session') {
+    return await showTicketSelection(defaultCinemaId, c.input, `场次 ${c.input}`, '');
+  }
+
+  if (c.kind === 'alias') {
+    await notifyUser(`🔎 正在根据别名检索: <code>${escapeHtml(c.input)}</code>`);
+    const movieInfo = await fetchMovieByItemKey(c.input);
+    if (movieInfo) {
+      return await showSessionsByMovieId(movieInfo.movieId, defaultCinemaId, null, movieInfo.name);
+    }
+  }
+
+  await notifyUser(`🔎 正在搜索电影：<b>${escapeHtml(c.input)}</b>`);
+  const movieInfo = await fetchMovieByItemKey(c.input);
   if (movieInfo) {
     return await showSessionsByMovieId(movieInfo.movieId, defaultCinemaId, null, movieInfo.name);
   }
 
-  return await notifyUser(`❌ 未能匹配到电影《${escapeHtml(input)}》，若该片尚未定档或放排片，TGV 系统内暂无记录。`);
+  return await notifyUser(`❌ 未能匹配到电影《${escapeHtml(c.input)}》，若该片尚未定档或放排片，TGV 系统内暂无记录。`);
 }
 
 // 消息监听
