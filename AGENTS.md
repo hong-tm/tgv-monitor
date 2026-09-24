@@ -58,16 +58,16 @@ Dependency direction (acyclic): `config`/`util`/`payload`/`input-classifier` →
 | Task | Location | Notes |
 |------|----------|-------|
 | Any new feature | `src/` modules | pick the module owning the concern; keep the shim thin |
-| Telegram commands | `handleMessage` | src/handlers.js:91; /start /status /list /check /del. `/uuid` has no branch here, it falls through to smart input. `handlers.js` is now only the command router; `/start` help and `/list` rendering live in `views.js` |
-| Smart text router | `classifyInput` / `handleSmartInput` | src/input-classifier.js:2; src/handlers.js:10; parsing now lives in `classifyInput`, `handleSmartInput` dispatches the result |
-| Inline button actions | `handleCallbackQuery` | src/handlers.js:144; actions `refresh_dashboard showall quicksub pick del suball sub`. `handlers.js` is now only the router; rendering lives in `views.js` |
+| Telegram commands | `handleMessage` | src/handlers.js:94; /start /status /list /check /del. `/uuid` has no branch here, it falls through to smart input. `handlers.js` is now only the command router; `/start` help and `/list` rendering live in `views.js` |
+| Smart text router | `classifyInput` / `handleSmartInput` | src/input-classifier.js:4; src/handlers.js:10; parsing now lives in `classifyInput`, `handleSmartInput` dispatches the result |
+| Inline button actions | `handleCallbackQuery` | src/handlers.js:147; actions `refresh_dashboard showall quicksub pick del suball sub`. `handlers.js` is now only the router; rendering lives in `views.js` |
 | TGV API calls | `fetchMovieByItemKey` / `fetchMovieSessions` / `fetchTickets` | src/tgv-api.js; MOVIE_BY_ITEMKEY to SESSIONS to TICKETS chain |
 | Polling/alert logic | `runProbeCycle` | src/probe.js:7; dedup via `alerted` flag, auto-remove at 15 fails |
 | Dashboard board | `sendRealtimeDashboard` | src/views.js:89 |
 | Persistence | `loadSubscriptions` / `saveSubscriptions` | src/store.js:4,17; synchronous fs, single state file |
 | Bot command registration | `setupBotCommands` | src/telegram.js:25 |
 | Telegram transport | `callTgApi` / `notifyUser` | src/telegram.js; raw API, HTML parse_mode |
-| Tests | `test/` | `npm test`; offline, axios stubbed, 46 tests |
+| Tests | `test/` | `npm test`; offline, axios stubbed, 48 tests |
 | Process / ops | `ecosystem.config.js` | pm2 app name and script must match the live process |
 ## CODE MAP
 Split across `src/`; `monitor.js` is a thin pm2 entry shim. It re-exports only `escapeHtml parseCallback runProbeCycle startTelegramPolling getSubscriptions setSubscriptions`, so `probeRunning`, `lastUpdateId`, `safeDecode`, `loadSubscriptions`, `saveSubscriptions`, `sessionCache`, `cacheSession`, `upsertSubscription`, `classifyInput`, `sendHelp`, `sendSubscriptionList` and `setupBotCommands` are reachable only through their own module.
