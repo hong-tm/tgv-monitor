@@ -1,6 +1,6 @@
 const crypto = require('crypto');
 const axios = require('axios');
-const { COMMON_HEADERS } = require('./config');
+const { COMMON_HEADERS, DEFAULT_AREA_CATEGORY } = require('./config');
 
 function generateUserSessionId() {
   return crypto.randomBytes(16).toString('hex');
@@ -84,7 +84,7 @@ async function fetchMovieSessions(movieId, cinemaId = 'VIV', date = null) {
 }
 
 // 3. 获取具体场次票种
-async function fetchTickets(cinemaId, sessionId, areaCategory = '0000000009') {
+async function fetchTickets(cinemaId, sessionId, areaCategory = DEFAULT_AREA_CATEGORY) {
   const url = 'https://api.tgv.com.my/api/boxoffice/v1/moviesession_gettickets';
   const payload = {
     cinemaid: cinemaId,

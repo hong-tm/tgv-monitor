@@ -4,7 +4,7 @@ const { getSubscriptions, setSubscriptions, saveSubscriptions, sessionCache, cac
 const { parseCallback } = require('./payload');
 const { showSessionsByMovieId, showTicketSelection, sendRealtimeDashboard, sendHelp, sendSubscriptionList } = require('./views');
 const { escapeHtml } = require('./util');
-const { TG_CHAT_ID } = require('./config');
+const { TG_CHAT_ID, PROMO_TICKET_CODES } = require('./config');
 const { classifyInput } = require('./input-classifier');
 
 // 智能总路由
@@ -208,7 +208,7 @@ async function handleCallbackQuery(cb) {
     const promoTickets = tickets.filter(t => 
       t.descriptionAlt?.includes('PROMO') || 
       t.longDescription?.includes('Limit Reached') ||
-      ['5785', '5759', '6336'].includes(String(t.ticketTypeCode))
+      PROMO_TICKET_CODES.includes(String(t.ticketTypeCode))
     );
 
     if (promoTickets.length === 0) {

@@ -42,6 +42,9 @@ const COMMON_HEADERS = {
   'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/152.0.0.0 Safari/537.36'
 };
 
+const DEFAULT_AREA_CATEGORY = '0000000009';
+const PROMO_TICKET_CODES = ['5785', '5759', '6336'];
+
 // 启动期校验：缺凭据时立即失败，而不是等到第一次调用 Telegram 才报 404
 function assertCredentials() {
   const missing = [];
@@ -58,5 +61,7 @@ module.exports = {
   CHECK_INTERVAL_MS,
   DATA_FILE,
   COMMON_HEADERS,
+  DEFAULT_AREA_CATEGORY,
+  PROMO_TICKET_CODES,
   assertCredentials
 };

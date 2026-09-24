@@ -1,5 +1,5 @@
 const fs = require('fs');
-const { DATA_FILE } = require('./config');
+const { DATA_FILE, DEFAULT_AREA_CATEGORY } = require('./config');
 
 function loadSubscriptions() {
   if (!fs.existsSync(DATA_FILE)) {
@@ -49,7 +49,7 @@ function upsertSubscription(cinemaId, sessionId, movieName, showTime) {
       cinemaId,
       movieTitle: movieName,
       showTime: showTime,
-      areaCategory: '0000000009',
+      areaCategory: DEFAULT_AREA_CATEGORY,
       targetCodes: [],
       targetDetails: {},
       alerted: false,
