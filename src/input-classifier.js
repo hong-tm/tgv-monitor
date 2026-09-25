@@ -20,7 +20,7 @@ function classifyInput(text, defaultCinemaId = 'VIV') {
       isExplicitUuidCmd,
       sessionId: parts[parts.length - 1],
       cinemaId: parts[parts.length - 2] || defaultCinemaId,
-      targetDate: parts[parts.length - 3], // 链接残缺时为 undefined，原样传递，不兜底
+      targetDate: parts[parts.length - 3],
       itemKey,
       movieName: decodeURIComponent(itemKey).replace(/-/g, ' ')
     };
