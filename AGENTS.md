@@ -2,7 +2,7 @@
 
 **Generated:** 2026-09-24
 **Commit:** `351220d` (branch `master`)
-**Git:** `/root/tgv-monitor` is its own git repo (branch `master`, no remote). The outer `/root` repository ignores `tgv-monitor/` via a `.gitignore` entry so the two `.git` directories do not collide.
+**Git:** `/root/tgv-monitor` is its own git repo (branch `master`), pushed to the PUBLIC remote `origin` -> https://github.com/hong-tm/tgv-monitor (MIT). The outer `/root` repository ignores `tgv-monitor/` via a `.gitignore` entry so the two `.git` directories do not collide.
 
 ## OVERVIEW
 Node.js (CommonJS) Telegram bot that monitors ticket availability for TGV,
