@@ -159,3 +159,20 @@ test('runProbeCycle is not reentrant and does not rewrite subscriptions.json', a
 
   monitor.setSubscriptions([]);
 });
+
+test('callTgApi pins IPv4 and gives the long-poll timeout slack', async (t) => {
+  const { callTgApi } = require('../src/telegram.js');
+  const captured = [];
+  t.mock.method(axios, 'post', async (url, data, cfg) => {
+    captured.push(cfg);
+    return { data: { ok: true, result: [] } };
+  });
+
+  await callTgApi('getMe', {});
+  await callTgApi('getUpdates', { offset: -1, timeout: 30 }, 45000);
+
+  assert.equal(captured.length, 2);
+  assert.equal(captured[0].httpsAgent.options.family, 4, 'must pin IPv4 (host has no IPv6 route)');
+  assert.equal(captured[0].timeout, 35000, 'default timeout stays 35s');
+  assert.equal(captured[1].timeout, 45000, 'long-poll needs slack beyond the 30s server hold');
+});

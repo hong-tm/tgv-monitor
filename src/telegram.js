@@ -1,10 +1,15 @@
+const https = require('https');
 const axios = require('axios');
 const { TG_BOT_TOKEN, TG_CHAT_ID } = require('./config');
 
-async function callTgApi(method, data = {}) {
+// 本机无 IPv6 路由，钉死 IPv4，省掉对必然 ENETUNREACH 的 AAAA 尝试
+const TG_HTTPS_AGENT = new https.Agent({ family: 4, keepAlive: true });
+const TG_TIMEOUT_MS = 35000;
+
+async function callTgApi(method, data = {}, timeoutMs = TG_TIMEOUT_MS) {
   const url = `https://api.telegram.org/bot${TG_BOT_TOKEN}/${method}`;
   try {
-    const res = await axios.post(url, data, { timeout: 35000 });
+    const res = await axios.post(url, data, { timeout: timeoutMs, httpsAgent: TG_HTTPS_AGENT });
     return res.data;
   } catch (err) {
     console.error(`[TG API Error - ${method}]:`, err.response?.data || err.message);

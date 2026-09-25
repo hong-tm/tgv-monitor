@@ -21,7 +21,7 @@ async function startTelegramPolling() {
       const res = await callTgApi('getUpdates', {
         offset: lastUpdateId + 1,
         timeout: 30
-      });
+      }, 45000);
 
       if (res && res.ok && Array.isArray(res.result)) {
         for (const update of res.result) {
