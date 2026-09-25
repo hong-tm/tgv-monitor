@@ -18,6 +18,7 @@ Bot token and chat id are NOT in the repo. `src/config.js` resolves them in this
 3. project-local `.env` (gitignored; template in `.env.example`)
 
 Precedence caveat: the two files merge as `{ ...LOCAL_ENV_FILE, ...CRED_FILE }` (src/config.js:28), so the out-of-repo file wins over a local `.env`.
+Live deployment (since 2026-09-25): the project-local `.env` is the active credential source; the former out-of-repo file was moved to `/root/.config/tgv-monitor/env.bak` (backup only, not read at runtime).
 
 `assertCredentials()` runs at the top of `main()` (src/app.js:48) so a missing credential fails loudly at startup instead of surfacing later as a Telegram 404. To rotate: edit the file, then `pm2 startOrRestart ecosystem.config.js`.
 

@@ -1,6 +1,6 @@
 // pm2 config: the app name and script path must match the existing live process (tgv-monitor),
 // otherwise startOrRestart spawns a second app instead of reusing it, and two pollers fight over getUpdates (409).
-// Credentials do not live in this file: src/config.js reads them from env vars or /root/.config/tgv-monitor/env.
+// Credentials do not live in this file: src/config.js resolves env vars > out-of-repo file ($TGV_ENV_FILE) > project .env.
 module.exports = {
   apps: [
     {
