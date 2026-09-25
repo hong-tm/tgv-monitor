@@ -1,7 +1,7 @@
 # PROJECT KNOWLEDGE BASE
 
 **Generated:** 2026-09-24
-**Commit:** `8b0432f` (branch `master`)
+**Commit:** `22199f5` (branch `master`)
 **Git:** `/root/tgv-monitor` is its own git repo (branch `master`, no remote). The outer `/root` repository ignores `tgv-monitor/` via a `.gitignore` entry so the two `.git` directories do not collide.
 
 ## OVERVIEW
@@ -9,7 +9,7 @@ Node.js (CommonJS) Telegram bot that monitors ticket availability for TGV,
 a Malaysian cinema chain (tgv.com.my). Polls the TGV boxoffice API every 60s and
 alerts the owner via Telegram when monitored promo tickets gain sellable quota.
 Stack: axios + raw Telegram Bot API over long-polling.
-Was a single 826-line file; split into `src/` modules in step 2 (`monitor.js` is now a 20-line entry shim; `src/` now holds 11 modules, 991 lines; repo total 2077 lines).
+Was a single 826-line file; split into `src/` modules in step 2 (`monitor.js` is now a 20-line entry shim; `src/` now holds 11 modules, 987 lines; repo total 2079 lines).
 
 ## CREDENTIALS
 Bot token and chat id are NOT in the repo. `src/config.js` resolves them in this order:
@@ -24,24 +24,24 @@ Precedence caveat: the two files merge as `{ ...LOCAL_ENV_FILE, ...CRED_FILE }` 
 ```
 tgv-monitor/
 ├── monitor.js            # 20 lines: pm2 entry shim only; require.main guard + 6 re-exports
-├── src/                  # 11 modules, 991 lines
+├── src/                  # 11 modules, 987 lines
 │   ├── config.js         # 66 lines: TG_BOT_TOKEN, TG_CHAT_ID, CHECK_INTERVAL_MS, DATA_FILE, COMMON_HEADERS, DEFAULT_AREA_CATEGORY, PROMO_TICKET_CODES, assertCredentials
 │   ├── util.js           # 12 lines: escapeHtml
 │   ├── payload.js        # 50 lines: safeDecode, parseCallback
-│   ├── input-classifier.js  # 53 lines: classifyInput; text → intent (empty/seat-link/movie-link/uuid/session/alias/search)
-│   ├── telegram.js       # 42 lines: callTgApi, notifyUser, setupBotCommands
+│   ├── input-classifier.js  # 47 lines: classifyInput; text → intent (empty/seat-link|movie-link|uuid|session|alias|search)
+│   ├── telegram.js       # 47 lines: callTgApi, notifyUser, setupBotCommands
 │   ├── tgv-api.js        # 104 lines: generateUserSessionId, getTodayBusinessDate, fetchMovieByItemKey/Sessions/Tickets
 │   ├── store.js          # 74 lines: subscriptions (get/set accessors), sessionCache, cacheSession, upsertSubscription; load/save
 │   ├── views.js          # 177 lines: showSessionsByMovieId, showTicketSelection, sendRealtimeDashboard, sendHelp, sendSubscriptionList
-│   ├── handlers.js       # 266 lines: command/action router; handleSmartInput, handleMessage, handleCallbackQuery
+│   ├── handlers.js       # 263 lines: command/action router; handleSmartInput, handleMessage, handleCallbackQuery
 │   ├── probe.js          # 85 lines: probeRunning, runProbeCycle
 │   └── app.js            # 62 lines: lastUpdateId, skipBacklog, startTelegramPolling, main
-├── test/                 # 5 files, 1066 lines; node:test, offline (axios stubbed), 48 tests
+├── test/                 # 5 files, 1072 lines; node:test, offline (axios stubbed), 48 tests
 │   ├── child-process.test.js              # 73 lines: CLI / entry-shim smoke tests
-│   ├── classifier.test.js                 # 171 lines: classifyInput unit tests
-│   ├── handlers-characterization.test.js  # 532 lines: handler integration / characterization tests
+│   ├── classifier.test.js                 # 161 lines: classifyInput unit tests
+│   ├── handlers-characterization.test.js  # 531 lines: handler integration / characterization tests
 │   ├── store.test.js                      # 129 lines: store accessor and upsertSubscription tests
-│   └── unit.test.js                       # 161 lines: callback_data byte-budget + source-level invariants
+│   └── unit.test.js                       # 178 lines: callback_data byte-budget + source-level invariants
 ├── ecosystem.config.js   # pm2: name tgv-monitor, fork, NODE_OPTIONS ipv4first
 ├── package.json          # commonjs; main monitor.js; sole dep axios ^1.20.0
 ├── package-lock.json
@@ -58,14 +58,14 @@ Dependency direction (acyclic): `config`/`util`/`payload`/`input-classifier` →
 | Task | Location | Notes |
 |------|----------|-------|
 | Any new feature | `src/` modules | pick the module owning the concern; keep the shim thin |
-| Telegram commands | `handleMessage` | src/handlers.js:94; /start /status /list /check /del. `/uuid` has no branch here, it falls through to smart input. `handlers.js` is now only the command router; `/start` help and `/list` rendering live in `views.js` |
-| Smart text router | `classifyInput` / `handleSmartInput` | src/input-classifier.js:4; src/handlers.js:10; parsing now lives in `classifyInput`, `handleSmartInput` dispatches the result |
-| Inline button actions | `handleCallbackQuery` | src/handlers.js:147; actions `refresh_dashboard showall quicksub pick del suball sub`. `handlers.js` is now only the router; rendering lives in `views.js` |
+| Telegram commands | `handleMessage` | src/handlers.js:91; /start /status /list /check /del. `/uuid` has no branch here, it falls through to smart input. `handlers.js` is now only the command router; `/start` help and `/list` rendering live in `views.js` |
+| Smart text router | `classifyInput` / `handleSmartInput` | src/input-classifier.js:2; src/handlers.js:10; parsing now lives in `classifyInput`, `handleSmartInput` dispatches the result |
+| Inline button actions | `handleCallbackQuery` | src/handlers.js:144; actions `refresh_dashboard showall quicksub pick del suball sub`. `handlers.js` is now only the router; rendering lives in `views.js` |
 | TGV API calls | `fetchMovieByItemKey` / `fetchMovieSessions` / `fetchTickets` | src/tgv-api.js; MOVIE_BY_ITEMKEY to SESSIONS to TICKETS chain |
 | Polling/alert logic | `runProbeCycle` | src/probe.js:7; dedup via `alerted` flag, auto-remove at 15 fails |
 | Dashboard board | `sendRealtimeDashboard` | src/views.js:89 |
 | Persistence | `loadSubscriptions` / `saveSubscriptions` | src/store.js:4,17; synchronous fs, single state file |
-| Bot command registration | `setupBotCommands` | src/telegram.js:25 |
+| Bot command registration | `setupBotCommands` | src/telegram.js:30 |
 | Telegram transport | `callTgApi` / `notifyUser` | src/telegram.js; raw API, HTML parse_mode |
 | Tests | `test/` | `npm test`; offline, axios stubbed, 48 tests |
 | Process / ops | `ecosystem.config.js` | pm2 app name and script must match the live process |
@@ -81,10 +81,10 @@ Split across `src/`; `monitor.js` is a thin pm2 entry shim. It re-exports only `
 | `DEFAULT_AREA_CATEGORY` `PROMO_TICKET_CODES` | hardcoded TGV domain constants moved to config | src/config.js:44,45 |
 | `escapeHtml` | HTML-escape dynamic content before Telegram HTML messages | src/util.js:2 |
 | `safeDecode` / `parseCallback` | callback_data decode; parses the `|` separator plus legacy underscore format | src/payload.js:2,11 |
-| `classifyInput` | pure text→intent classifier (returns `empty|seat-link|movie-link|uuid|session|alias|search`), no I/O; a `movie-link` also carries `fallbackUuid` (the UUID inside the link) for the original failed-lookup fall-through | src/input-classifier.js:4 |
-| `callTgApi` | axios POST to api.telegram.org, swallows errors, returns null | src/telegram.js:4 |
-| `notifyUser` | sendMessage with HTML + optional reply_markup | src/telegram.js:15 |
-| `setupBotCommands` | setMyCommands for the 5 slash commands | src/telegram.js:25 |
+| `classifyInput` | pure text→intent classifier (returns `empty|seat-link|movie-link|uuid|session|alias|search`), no I/O | src/input-classifier.js:2 |
+| `callTgApi` | axios POST to api.telegram.org, swallows errors, returns null | src/telegram.js:9 |
+| `notifyUser` | sendMessage with HTML + optional reply_markup | src/telegram.js:20 |
+| `setupBotCommands` | setMyCommands for the 5 slash commands | src/telegram.js:30 |
 | `loadSubscriptions` / `saveSubscriptions` | JSON file state; load creates an empty file if missing; save = full rewrite, sync | src/store.js:4,17 |
 | `getSubscriptions` / `setSubscriptions` | the ONLY accessors to the live `subscriptions` array | src/store.js:35,39 |
 | `sessionCache` / `cacheSession` | Map `${cinemaId}_${sessionId}` to {movieName, showTime}; FIFO cap 500, prefer cacheSession | src/store.js:23,27 |
@@ -98,8 +98,8 @@ Split across `src/`; `monitor.js` is a thin pm2 entry shim. It re-exports only `
 | `sendRealtimeDashboard` | per-subscription ticket status board, editable + refresh button | src/views.js:89 |
 | `sendHelp` / `sendSubscriptionList` | the `/start` help copy and `/list` rendering, moved out of handlers | src/views.js:142,155 |
 | `handleSmartInput` | command-side dispatcher; real text parsing now lives in `classifyInput` | src/handlers.js:10 |
-| `handleMessage` | chat-id-gated command dispatch, falls back to smart input | src/handlers.js:94 |
-| `handleCallbackQuery` | all inline button routing | src/handlers.js:147 |
+| `handleMessage` | chat-id-gated command dispatch, falls back to smart input | src/handlers.js:91 |
+| `handleCallbackQuery` | all inline button routing | src/handlers.js:144 |
 | `probeRunning` / `runProbeCycle` | reentrancy guard; per-sub probe, alerts on quota>0 and !LimitReached, auto-remove at 15 fails | src/probe.js:6,7 |
 | `lastUpdateId` / `skipBacklog` | long-poll offset cursor; boot-time backlog drain via getUpdates offset:-1 | src/app.js:6,10 |
 | `startTelegramPolling` | infinite getUpdates long-poll loop; fire-and-forget | src/app.js:17 |
@@ -113,7 +113,7 @@ Split across `src/`; `monitor.js` is a thin pm2 entry shim. It re-exports only `
 - Async flow: `main()` is not awaited (monitor.js:10). Both boot loops launch fire-and-forget (src/app.js:53-55). Never await `startTelegramPolling()`, it is an infinite loop.
 - Error style: TGV fetch errors return null or empty and callers degrade gracefully; probe failures bump `failCount` and auto-remove at 15.
 - No lint, format, or build tooling exists, and there are no devDependencies. Do not introduce eslint/prettier/tsconfig and claim project precedent.
-- pm2 runs one fork instance. ecosystem.config.js pins `NODE_OPTIONS=--dns-result-order=ipv4first` because api.telegram.org resolves AAAA and this host has no IPv6 route.
+- pm2 runs one fork instance. ecosystem.config.js pins `NODE_OPTIONS=--dns-result-order=ipv4first` because api.telegram.org resolves AAAA and this host has no IPv6 route. `src/telegram.js` additionally pins the axios https agent to `family: 4` (same reason, and covers foreground runs without NODE_OPTIONS), and the `getUpdates` long-poll passes a 45s axios timeout because 35s left only ~5s slack over the 30s server hold on a lossy route.
 
 ## ANTI-PATTERNS (THIS PROJECT)
 - Never hardcode credentials. `TG_BOT_TOKEN`/`TG_CHAT_ID` come from env or the credential files in src/config.js:28. Never print or commit them.
