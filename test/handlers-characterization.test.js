@@ -514,19 +514,18 @@ test('alias whose lookup fails falls through to the plain-search tail', async (t
 
 // --- 17 ----------------------------------------------------------------------
 
-test('movie-link whose lookup fails falls back to the UUID inside the link', async (t) => {
+test('movie-link holding a UUID still falls through to the plain-search tail', async (t) => {
   isolate(t);
   mockWrites(t);
   const { sent } = mockAxios(t);
 
   await handleSmartInput('/movies/details/9b4d3f2a-1111-2222-3333-444455556666');
 
-  assert.equal(sent[0].payload.text, '🔎 正在解析电影别名: <code>9b4d3f2a-1111-2222-3333-444455556666</code>');
-  assert.ok(
-    sent[1].payload.text.startsWith('🔍 正在检索电影 UUID <code>9b4d3f2a-1111-2222-3333-444455556666</code> 在 <code>'),
-    'must re-dispatch to the UUID branch, not the plain-search tail'
-  );
-  assert.ok(!sent.some((c) => c.payload.text.includes('正在搜索电影')), 'must NOT reach the plain-search tail');
-  assert.ok(sent[2].payload.text.includes('接口暂无此日期的场次排片数据'));
   assert.equal(sent.length, 3);
+  assert.equal(sent[0].payload.text, '🔎 正在解析电影别名: <code>9b4d3f2a-1111-2222-3333-444455556666</code>');
+  assert.equal(sent[1].payload.text, '🔎 正在搜索电影：<b>/movies/details/9b4d3f2a-1111-2222-3333-444455556666</b>');
+  assert.equal(
+    sent[2].payload.text,
+    '❌ 未能匹配到电影《/movies/details/9b4d3f2a-1111-2222-3333-444455556666》，若该片尚未定档或放排片，TGV 系统内暂无记录。'
+  );
 });

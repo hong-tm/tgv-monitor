@@ -92,8 +92,7 @@ test('case 7: /movies/details/{itemkey} is a movie-link', () => {
   assert.deepEqual(classifyInput('/movies/details/spider-man'), {
     kind: 'movie-link',
     input: '/movies/details/spider-man',
-    itemKey: 'spider-man',
-    fallbackUuid: null
+    itemKey: 'spider-man'
   });
 });
 
@@ -102,19 +101,10 @@ test('case 8: movie link stops the itemkey at ?', () => {
   assert.deepEqual(classifyInput('/movies/spider-man?from=top#x'), {
     kind: 'movie-link',
     input: '/movies/spider-man?from=top#x',
-    itemKey: 'spider-man',
-    fallbackUuid: null
+    itemKey: 'spider-man'
   });
 });
 
-test('case 8b: movie link pre-extracts a UUID reference as fallbackUuid', () => {
-  assert.deepEqual(classifyInput('/movies/spider-man?ref=9b4d3f2a-1111-2222-3333-444455556666'), {
-    kind: 'movie-link',
-    input: '/movies/spider-man?ref=9b4d3f2a-1111-2222-3333-444455556666',
-    itemKey: 'spider-man',
-    fallbackUuid: '9b4d3f2a-1111-2222-3333-444455556666'
-  });
-});
 
 // 9
 test('case 9: bare /movies/ fails the inner regex and falls through to search', () => {

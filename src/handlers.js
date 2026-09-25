@@ -61,9 +61,6 @@ async function handleSmartInput(text, defaultCinemaId = 'VIV') {
     if (movieInfo) {
       return await showSessionsByMovieId(movieInfo.movieId, defaultCinemaId, null, movieInfo.name);
     }
-    if (c.fallbackUuid) {
-      return await showSessionsByMovieId(c.fallbackUuid, defaultCinemaId);
-    }
   }
 
   if (c.kind === 'uuid') {
