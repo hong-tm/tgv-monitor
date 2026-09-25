@@ -1,7 +1,7 @@
 # PROJECT KNOWLEDGE BASE
 
 **Generated:** 2026-09-24
-**Commit:** `22199f5` (branch `master`)
+**Commit:** `351220d` (branch `master`)
 **Git:** `/root/tgv-monitor` is its own git repo (branch `master`, no remote). The outer `/root` repository ignores `tgv-monitor/` via a `.gitignore` entry so the two `.git` directories do not collide.
 
 ## OVERVIEW
