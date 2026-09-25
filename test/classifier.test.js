@@ -1,7 +1,7 @@
 'use strict';
 
-// classifyInput 是从 handleSmartInput 抽出的纯函数：只分类、不做 I/O。
-// 用例锁定六种 kind、分支优先级（顺序即语义），以及 seat-link 的右锚定下标偏移。
+// classifyInput is the pure function extracted from handleSmartInput: classify only, no I/O.
+// Cases lock the six kinds, branch priority (order is semantics), and the right-anchored offsets of seat-link parsing.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
@@ -52,9 +52,9 @@ test('case 4: /uuid-prefixed seat link keeps cleaned input and sets isExplicitUu
 });
 
 // 5
-// 注：任务书原文期望 targetDate===undefined，但逐字抽取的实现做不到：
+// Note: the original task spec expected targetDate === undefined, but the verbatim extraction cannot produce that:
 // '/select-seats/x/157699'.split('/') = ['', 'select-seats', 'x', '157699']，
-// targetDate 取 parts[length-3] 得到 'select-seats'。按零行为变化契约锁定实际值。
+// targetDate is parts[length-3], which yields 'select-seats' here. Locked to the actual value per the zero-behavior-change contract.
 test('case 5: truncated seat link keeps right-anchored offsets; empty cinema falls back to default', () => {
   const r = classifyInput('/select-seats/x/157699');
   assert.deepEqual(r, {

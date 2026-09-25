@@ -47,7 +47,7 @@ tgv-monitor/
 ├── package-lock.json
 ├── .env.example          # credential template (TG_BOT_TOKEN, TG_CHAT_ID)
 ├── .gitignore            # ignores .env, subscriptions.json.bak, node_modules/, .codegraph/
-├── subscriptions.json    # runtime state: monitored sessions (mutated live by bot)
+├── subscriptions.json    # untracked runtime state (gitignored; mutated live by bot)
 └── .omo/                 # agent session state, not project code
 ```
 Dependency direction (acyclic): `config`/`util`/`payload`/`input-classifier` → none; `telegram`/`tgv-api`/`store` → config (`store` imports `DATA_FILE` and `DEFAULT_AREA_CATEGORY`);
@@ -106,7 +106,7 @@ Split across `src/`; `monitor.js` is a thin pm2 entry shim. It re-exports only `
 | `main` | startup: assertCredentials, commands, hello, polling, probe interval | src/app.js:47 |
 
 ## CONVENTIONS
-- Chinese comments and Chinese emoji-heavy Telegram copy. Keep this style in new code.
+- Code comments in English, low density (only what the code cannot convey). Telegram copy shown to users stays Chinese (emoji-heavy); keep that copy style.
 - Transport is the raw Telegram Bot API through `callTgApi`/axios, not a bot library.
 - Hardcoded domain constants: `DEFAULT_AREA_CATEGORY = '0000000009'` and `PROMO_TICKET_CODES = ['5785','5759','6336']` live in `src/config.js`; cinema `VIV` remains the default argument value in several functions. `src/views.js`'s inline `isPromo` predicate (used for the 🔥 emoji) is a DIFFERENT predicate from the `suball` promo filter and must stay separate.
 - Persistence: read or mutate the live `subscriptions` array ONLY via `getSubscriptions()`/`setSubscriptions()` from src/store.js:35,39, and call `saveSubscriptions` on change. No other state files. Do NOT cache a subscriptions reference across calls, `/del` replaces the array.

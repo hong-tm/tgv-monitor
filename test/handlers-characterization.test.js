@@ -453,7 +453,7 @@ test('pick/quicksub fall back from cache to payload to defaults', async (t) => {
   await handleCallbackQuery({ id: '1', data: 'quicksub|VIV|157699|Legacy', message: { message_id: 2 } });
   assert.ok(sent.some((c) => c.method === 'sendMessage' && c.payload.text.includes('Legacy')));
 
-  // (d) quicksub with no legacy arg -> default 电影
+  // (d) quicksub with no legacy arg -> falls back to the default movie name
   sent.length = 0;
   await handleCallbackQuery({ id: '1', data: 'quicksub|VIV|157699', message: { message_id: 2 } });
   assert.ok(sent.some((c) => c.method === 'sendMessage' && c.payload.text.includes('电影')));

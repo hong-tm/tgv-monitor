@@ -22,7 +22,7 @@ let subscriptions = loadSubscriptions();
 
 const sessionCache = new Map();
 
-// 有界缓存：只保留最近使用的条目，避免长期运行内存只增不减
+// Bounded cache: keeps only recent entries so long-running memory does not grow without limit
 const MAX_SESSION_CACHE = 500;
 function cacheSession(key, value) {
   if (sessionCache.size >= MAX_SESSION_CACHE && !sessionCache.has(key)) {
@@ -40,7 +40,7 @@ function setSubscriptions(subs) {
   subscriptions = subs;
 }
 
-// 定位或新建 (sessionId, cinemaId) 监控项；只改内存，落盘由调用方决定
+// Find-or-create the (sessionId, cinemaId) subscription; memory-only, callers own persistence
 function upsertSubscription(cinemaId, sessionId, movieName, showTime) {
   let sub = getSubscriptions().find(s => s.sessionId === sessionId && s.cinemaId === cinemaId);
   if (!sub) {

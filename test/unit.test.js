@@ -14,8 +14,8 @@ const DATA_FILE = path.join(__dirname, '..', 'subscriptions.json');
 
 const sha256 = (file) => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 
-// fresh clone 没有 subscriptions.json（运行时状态，已 gitignore）；
-// 按 loadSubscriptions 的语义先建空文件，保证 sha256 校验可跑。
+// A fresh clone has no subscriptions.json (runtime state, gitignored);
+// create an empty one first (loadSubscriptions semantics) so the sha256 check can run.
 if (!fs.existsSync(DATA_FILE)) fs.writeFileSync(DATA_FILE, '[]');
 
 test('escapeHtml escapes & < > only, coerces non-strings, nullish -> empty', () => {

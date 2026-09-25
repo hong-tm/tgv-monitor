@@ -60,7 +60,7 @@ test('upsertSubscription creates a new entry in canonical key order', (t) => {
   t.mock.method(fs, 'writeFileSync', () => {});
   const returned = store.upsertSubscription('VIV', '157699', 'Spider Man', '20:30');
 
-  // 新增项必须就是活动数组里的那个对象，不能是副本
+  // the created entry must be the live array element, not a copy
   assert.equal(store.getSubscriptions().at(-1), returned, 'returned entry must be the live array element');
   assert.deepEqual(returned, {
     sessionId: '157699',
@@ -73,7 +73,7 @@ test('upsertSubscription creates a new entry in canonical key order', (t) => {
     alerted: false,
     failCount: 0
   });
-  // 键序锁定 subscriptions.json 的序列化字节
+  // key order locks the serialized bytes of subscriptions.json
   assert.equal(
     Object.keys(returned).join(','),
     'sessionId,cinemaId,movieTitle,showTime,areaCategory,targetCodes,targetDetails,alerted,failCount'
@@ -122,7 +122,7 @@ test('upsertSubscription refreshes an existing entry without resetting state or 
   assert.equal(returned.alerted, true, 'alerted must survive the update');
   assert.equal(returned.failCount, 3, 'failCount must survive the update');
 
-  // 只改内存：调用方（handlers 的 sub 分支）自行决定何时落盘
+  // memory-only: callers (the sub branch in handlers) decide when to persist
   assert.equal(fs.writeFileSync.mock.callCount(), 0, 'update must not persist');
   store.upsertSubscription('VIV', '999999', 'Fresh', '10:00');
   assert.equal(fs.writeFileSync.mock.callCount(), 0, 'create must not persist either');

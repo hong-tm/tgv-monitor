@@ -1,10 +1,10 @@
 const path = require('path');
 const fs = require('fs');
 
-// 凭据不再硬编码，按优先级读取：环境变量 > 仓库外凭据文件 > 项目内 .env（已被 .gitignore 忽略）。
-// 支持项目内 .env 是为了与仓库中的 .env.example 样板保持一致，便于本地开发。
-// 下方 fileCreds 按 { ...LOCAL_ENV_FILE, ...CRED_FILE } 合并：仓库外凭据文件优先，
-// 项目内一份陈旧 .env 顶不掉生产凭据。
+// Credentials are not hardcoded. Resolution order: env vars > out-of-repo credential file > project .env (gitignored).
+// The project .env exists to mirror the .env.example template for local development.
+// fileCreds below merges as { ...LOCAL_ENV_FILE, ...CRED_FILE }: the out-of-repo file wins,
+// so a stale local .env can never shadow production credentials.
 const CRED_FILE = process.env.TGV_ENV_FILE || '/root/.config/tgv-monitor/env';
 const LOCAL_ENV_FILE = path.join(__dirname, '..', '.env');
 
@@ -44,7 +44,7 @@ const COMMON_HEADERS = {
 const DEFAULT_AREA_CATEGORY = '0000000009';
 const PROMO_TICKET_CODES = ['5785', '5759', '6336'];
 
-// 启动期校验：缺凭据时立即失败，而不是等到第一次调用 Telegram 才报 404
+// Fail fast at startup on missing credentials, instead of surfacing a Telegram 404 later
 function assertCredentials() {
   const missing = [];
   if (!TG_BOT_TOKEN) missing.push('TG_BOT_TOKEN');

@@ -2,7 +2,7 @@ const https = require('https');
 const axios = require('axios');
 const { TG_BOT_TOKEN, TG_CHAT_ID } = require('./config');
 
-// 本机无 IPv6 路由，钉死 IPv4，省掉对必然 ENETUNREACH 的 AAAA 尝试
+// No IPv6 route on this host: pin IPv4 and skip the guaranteed-ENETUNREACH AAAA attempt
 const TG_HTTPS_AGENT = new https.Agent({ family: 4, keepAlive: true });
 const TG_TIMEOUT_MS = 35000;
 

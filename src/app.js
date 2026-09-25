@@ -5,8 +5,8 @@ const { CHECK_INTERVAL_MS, assertCredentials } = require('./config');
 
 let lastUpdateId = 0;
 
-// offset:-1 是 Telegram 的「丢弃积压」语义：返回最后一条 update 并清空队列，
-// 借此避免重启后重放旧指令，无需新增持久化文件（本项目约定不新增状态文件）。
+// offset:-1 is Telegram's discard-backlog semantics: return the last update and clear the queue,
+// so a restart never replays old commands; no extra persistence file needed (project convention).
 async function skipBacklog() {
   const res = await callTgApi('getUpdates', { offset: -1, timeout: 0 });
   if (res && res.ok && Array.isArray(res.result) && res.result.length > 0) {
@@ -34,7 +34,7 @@ async function startTelegramPolling() {
         }
       }
 
-      // callTgApi 自己吞掉异常返回 null，这里必须补延迟，否则失败时会零延迟空转打爆 Telegram
+      // callTgApi swallows errors and returns null; this delay is mandatory or the loop busy-spins Telegram on failure
       if (!res || res.ok !== true) {
         await new Promise(r => setTimeout(r, 3000));
       }
