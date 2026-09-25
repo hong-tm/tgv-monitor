@@ -1,7 +1,8 @@
 # 本地密钥文件（含明文凭据，切勿提交）
 .env
 
-# 订阅状态备份（运行时产物）
+# 订阅状态（运行时产物，含个人观影数据，不入库）
+subscriptions.json
 subscriptions.json.bak
 
 # 依赖与索引（本地产物）
