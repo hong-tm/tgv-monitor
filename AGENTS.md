@@ -155,21 +155,18 @@ michaelshimeles/skills AGENTS.md, commit 4b72f46, and trimmed to what applies
 here, so this section stands alone in a fresh checkout.
 
 - **Isolate.** Give each editing task its own branch (a worktree when the
-  environment supports one); never build on the default branch, and do not
-  reuse another task's work. Skill shape: `new-feature` (per-task
-  worktree/branch isolation before any edit).
+  environment supports one) before the first edit; never build on the
+  default branch, and do not reuse another task's work.
 - **Build.** Make the smallest change that meets the goal; keep logic shared
-  by several flows in one place instead of duplicating it. Skill shape:
-  `code-structure` (where shared operations belong versus flow-specific
-  actions).
+  by several flows in one place instead of duplicating it, and leave
+  flow-specific actions in the flow that owns them.
 - **Prove.** Verify changed behavior on the real surface and record what was
   run and what resulted: screenshots, output pairs, or measured numbers as
-  the environment allows. Skill shapes: `evidence-driven-testing` (capture
-  observable proof while testing) and `before-and-after` (paired screenshots
-  for visual comparison of UI changes).
-- **Ship.** Publish the PR, then address reviewer feedback in bounded
-  review-and-fix cycles instead of open-ended rework. Skill shape:
-  `greploop` (iterate on automated PR review comments through fixed rounds).
+  the environment allows; for visual changes, pair screenshots from before
+  and after.
+- **Ship.** Publish the PR, then address reviewer feedback, including
+  automated PR review comments, in bounded review-and-fix cycles instead of
+  open-ended rework.
 
 Checks for this repo:
 
@@ -184,7 +181,7 @@ Hard invariants:
 ## Project review pilot
 
 This pilot applies only to tgv-monitor. It supplements the four beats above;
-its review-round limit takes precedence over an open-ended greploop for this
+its review-round limit takes precedence over an open-ended review loop for this
 repository. Keep shared workflow files and upstream skills unchanged.
 
 ### Choose checks by impact
