@@ -143,7 +143,8 @@ No build, lint, or format tooling exists.
 - `showTime` is `HH:MM` from `showtimemy` (substring 11-16). Movie titles do not travel in callback payloads; they are recovered from `sessionCache` in src/store.js.
 - `package.json` `main` is `monitor.js`; the sole dependency is `axios`. `node-telegram-bot-api` was removed and is not installed.
 - Alert detection quirk: `quantityAvailablePerOrder > 0` AND the description does not contain "Today's Promotion Limit Reached".
-- The live pm2 app is `tgv-monitor`. Its id can shift (currently 2); only `name` and `script` matter for `startOrRestart` reuse.
+- The live pm2 app is `tgv-monitor`. Its id can shift (currently 1); only `name` and `script` matter for `startOrRestart` reuse.
+- IPv4 transport pin verified in production on 2026-11-01 (pm2 restart, follow-redirects 1.16.1 loaded): the full pm2 error-log history contains zero IPv6-family failures (`ENETUNREACH`/`EAFNOSUPPORT`/`EAI_AGAIN`/`ECONNREFUSED`); every logged failure is a Telegram-side transient (502, 429, 45s timeout, `ECONNRESET`), and the `getUpdates` long-poll holds a live IPv4 connection to Telegram (149.154.166.110:443).
 
 ---
 
