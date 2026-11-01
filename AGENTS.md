@@ -151,7 +151,7 @@ No build, lint, or format tooling exists.
 # Agent workflow (four beats)
 
 Four beats: isolate → build → prove → ship. Adapted from the
-michaelshimeles/skills AGENTS.md, commit 4b72b46, and trimmed to what applies
+michaelshimeles/skills AGENTS.md, commit 4b72f46, and trimmed to what applies
 here, so this section stands alone in a fresh checkout.
 
 - **Isolate.** Give each editing task its own branch (a worktree when the
