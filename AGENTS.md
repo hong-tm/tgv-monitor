@@ -144,14 +144,32 @@ No build, lint, or format tooling exists.
 - `package.json` `main` is `monitor.js`; the sole dependency is `axios`. `node-telegram-bot-api` was removed and is not installed.
 - Alert detection quirk: `quantityAvailablePerOrder > 0` AND the description does not contain "Today's Promotion Limit Reached".
 - The live pm2 app is `tgv-monitor`. Its id can shift (currently 1); only `name` and `script` matter for `startOrRestart` reuse.
-- IPv4 transport pin verified in production on 2026-11-01 (pm2 restart, follow-redirects 1.16.1 loaded): the full pm2 error-log history contains zero IPv6-family failures (`ENETUNREACH`/`EAFNOSUPPORT`/`EAI_AGAIN`/`ECONNREFUSED`); every logged failure is a Telegram-side transient (502, 429, 45s timeout, `ECONNRESET`), and the `getUpdates` long-poll holds a live IPv4 connection to Telegram (149.154.166.110:443).
+- IPv4 transport pin verified in production on 2026-11-01 (pm2 restart, follow-redirects 1.16.1 loaded): the full pm2 error-log history contains zero hits for the searched error set (`ENETUNREACH`/`EAFNOSUPPORT`/`EAI_AGAIN`/`ECONNREFUSED`); every logged failure is a Telegram-side transient (502, 429, 45s timeout, `ECONNRESET`), and the `getUpdates` long-poll holds a live IPv4 connection to Telegram (149.154.166.110:443). Only `ENETUNREACH` (and `EAFNOSUPPORT`) are IPv6-specific signatures on this host; `EAI_AGAIN` is a general DNS-resolution error and `ECONNREFUSED` can occur on either address family, so they are searched as generic transport failures, not IPv6 markers. The IPv6 failures actually observed (2026-09-25 diagnosis, before the pin) were 2/2 immediate `ENETUNREACH`.
 
 ---
 
 # Agent workflow (four beats)
 
-四拍流程（isolate → build → prove → ship）、配套技能、多 agent 规矩与公开评论的署名规则都写在
-`/root/.agents/reference/repo-workflow.md`，动手前读它。本仓库自己的部分只有下面两节。
+Four beats: isolate → build → prove → ship. Adapted from the
+michaelshimeles/skills AGENTS.md, commit 4b72b46, and trimmed to what applies
+here, so this section stands alone in a fresh checkout.
+
+- **Isolate.** Give each editing task its own branch (a worktree when the
+  environment supports one); never build on the default branch, and do not
+  reuse another task's work. Skill shape: `new-feature` (per-task
+  worktree/branch isolation before any edit).
+- **Build.** Make the smallest change that meets the goal; keep logic shared
+  by several flows in one place instead of duplicating it. Skill shape:
+  `code-structure` (where shared operations belong versus flow-specific
+  actions).
+- **Prove.** Verify changed behavior on the real surface and record what was
+  run and what resulted: screenshots, output pairs, or measured numbers as
+  the environment allows. Skill shapes: `evidence-driven-testing` (capture
+  observable proof while testing) and `before-and-after` (paired screenshots
+  for visual comparison of UI changes).
+- **Ship.** Publish the PR, then address reviewer feedback in bounded
+  review-and-fix cycles instead of open-ended rework. Skill shape:
+  `greploop` (iterate on automated PR review comments through fixed rounds).
 
 Checks for this repo:
 
