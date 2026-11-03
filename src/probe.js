@@ -16,9 +16,12 @@ async function runProbeCycle() {
 
     for (let i = getSubscriptions().length - 1; i >= 0; i--) {
       const sub = getSubscriptions()[i];
+      if (!sub) continue;
 
       try {
         const tickets = await fetchTickets(sub.cinemaId, sub.sessionId, sub.areaCategory);
+        // /del can replace the array while the fetch is in flight; skip entries that are gone
+        if (!getSubscriptions().includes(sub)) continue;
         sub.failCount = 0;
 
         if (!tickets || tickets.length === 0) continue;
@@ -66,10 +69,11 @@ async function runProbeCycle() {
       } catch (err) {
         sub.failCount = (sub.failCount || 0) + 1;
         console.error(`[Probe] 探测失败 (${sub.cinemaId}/${sub.sessionId}) failCount=${sub.failCount}: ${err.message}`);
-        if (sub.failCount >= 15) {
-          await notifyUser(`⚠️ <b>场次自动失效提醒</b>\n电影《${escapeHtml(sub.movieTitle || sub.sessionId)}》场次已下线，已自动移出监控。`);
-          getSubscriptions().splice(i, 1);
+        const idx = getSubscriptions().indexOf(sub);
+        if (sub.failCount >= 15 && idx !== -1) {
+          getSubscriptions().splice(idx, 1);
           dirty = true;
+          await notifyUser(`⚠️ <b>场次自动失效提醒</b>\n电影《${escapeHtml(sub.movieTitle || sub.sessionId)}》场次已下线，已自动移出监控。`);
         }
       }
     }

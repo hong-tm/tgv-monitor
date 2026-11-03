@@ -556,3 +556,41 @@ for (const data of ['sub|VIV|157699|5785', 'suball|VIV|157699']) {
     assert.equal(sent[0].payload.show_alert, true);
   });
 }
+
+// --- alert reset / composite delete ---------------------------------------------
+
+test('adding a ticket code to an already-alerted sub re-arms its alert', async (t) => {
+  isolate(t);
+  const writes = mockWrites(t);
+  mockAxios(t, {
+    moviesession_gettickets: {
+      data: { results: { tickets: [{ ticketTypeCode: 5759, description: 'Promo B', priceInCents: 700, quantityAvailablePerOrder: 0 }] } }
+    }
+  });
+  store.setSubscriptions([{ sessionId: '157699', cinemaId: 'VIV', movieTitle: 'M', showTime: '20:30', areaCategory: '0000000009', targetCodes: ["5785"], targetDetails: {}, alerted: true, failCount: 0 }]);
+
+  await handleCallbackQuery({ id: '1', data: 'sub|VIV|157699|5759', message: { message_id: 2 } });
+
+  assert.equal(writes.length, 1);
+  const saved = JSON.parse(writes[0].data)[0];
+  assert.deepEqual(saved.targetCodes, ['5785', '5759']);
+  assert.equal(saved.alerted, false, 'a new target code must be able to alert');
+});
+
+test('/del buttons carry the cinema and the callback deletes only that (cinema, session) pair', async (t) => {
+  isolate(t);
+  const writes = mockWrites(t);
+  const { sent } = mockAxios(t);
+  store.setSubscriptions([{ sessionId: '157699', cinemaId: 'VIV', movieTitle: 'A', showTime: '20:30', areaCategory: '0000000009', targetCodes: ["5785"], targetDetails: {}, alerted: false, failCount: 0 }, { sessionId: '157699', cinemaId: 'OTHER', movieTitle: 'B', showTime: '20:30', areaCategory: '0000000009', targetCodes: ["5785"], targetDetails: {}, alerted: false, failCount: 0 }]);
+
+  await handleMessage({ text: '/del', chat: { id: TG_CHAT_ID } });
+  const buttons = lastSend(sent).payload.reply_markup.inline_keyboard.map((row) => row[0].callback_data);
+  assert.deepEqual(buttons, ['del|VIV|157699', 'del|OTHER|157699']);
+
+  await handleCallbackQuery({ id: '1', data: 'del|OTHER|157699', message: { message_id: 2 } });
+
+  assert.deepEqual(store.getSubscriptions().map((s) => s.cinemaId), ['VIV']);
+  assert.equal(writes.length, 1);
+  const answer = sent.find((c) => c.method === 'answerCallbackQuery');
+  assert.equal(answer.payload.text, '已移除《B》');
+});

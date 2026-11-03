@@ -129,7 +129,7 @@ async function handleMessage(msg) {
       }
       const delButtons = getSubscriptions().map(s => ([{
         text: `❌ 删除: 《${s.movieTitle || '未知'}》 (${s.showTime || s.sessionId})`,
-        callback_data: `del|${s.sessionId}`
+        callback_data: `del|${s.cinemaId}|${s.sessionId}`
       }]));
 
       return await notifyUser('🗑️ <b>请点击下方按钮选择要删除的场次：</b>', {
@@ -192,11 +192,15 @@ async function handleCallbackQuery(cb) {
   }
 
   if (action === 'del') {
-    const sessionId = args[0];
-    const target = getSubscriptions().find(s => s.sessionId === sessionId);
+    // del|<cinema>|<session>; legacy del|<session> / del_<session> buttons match on session only
+    const [first, second] = args;
+    const sessionId = second === undefined ? first : second;
+    const cinemaId = second === undefined ? null : first;
+    const matches = s => s.sessionId === sessionId && (cinemaId === null || s.cinemaId === cinemaId);
+    const target = getSubscriptions().find(matches);
     const movieName = target?.movieTitle || sessionId;
 
-    setSubscriptions(getSubscriptions().filter(s => s.sessionId !== sessionId));
+    setSubscriptions(getSubscriptions().filter(s => !matches(s)));
     saveSubscriptions(getSubscriptions());
 
     await callTgApi('answerCallbackQuery', { callback_query_id: cb.id, text: `已移除《${movieName}》` });
@@ -228,6 +232,7 @@ async function handleCallbackQuery(cb) {
       if (!sub.targetCodes.includes(code)) {
         sub.targetCodes.push(code);
         sub.targetDetails[code] = { name: pt.description, price: pt.priceInCents / 100 };
+        sub.alerted = false; // a new code must be able to alert even if an older one already did
       }
     }
     saveSubscriptions(getSubscriptions());
@@ -260,6 +265,7 @@ async function handleCallbackQuery(cb) {
       name: targetTicket.description,
       price: targetTicket.priceInCents / 100
     };
+    sub.alerted = false; // a new code must be able to alert even if an older one already did
     saveSubscriptions(getSubscriptions());
 
     await callTgApi('answerCallbackQuery', { callback_query_id: cb.id, text: `已添加 ${targetTicket.description}` });

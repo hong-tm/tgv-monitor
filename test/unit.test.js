@@ -228,3 +228,22 @@ test('runProbeCycle keeps the alert pending when sendMessage fails, then deliver
   assert.equal(sub.alerted, true);
   assert.equal(writes.length, 1, 'alerted flag persisted once');
 });
+
+test('runProbeCycle survives the subscriptions array being replaced mid-cycle (/del)', async (t) => {
+  t.mock.method(fs, 'writeFileSync', () => {});
+  t.mock.method(console, 'error', () => {});
+  let calls = 0;
+  t.mock.method(axios, 'post', async (url) => {
+    if (url.includes('api.telegram.org')) return { data: { ok: true, result: {} } };
+    calls++;
+    if (calls === 1) monitor.setSubscriptions([]); // /del lands while the first fetch is in flight
+    return { data: { results: { tickets: [] } } };
+  });
+  const mk = (id) => ({ sessionId: id, cinemaId: 'VIV', movieTitle: 'M', showTime: '', areaCategory: '0000000009', targetCodes: ['5785'], targetDetails: {}, alerted: false, failCount: 0 });
+  monitor.setSubscriptions([mk('90000003'), mk('90000004')]);
+  t.after(() => monitor.setSubscriptions([]));
+
+  await monitor.runProbeCycle(); // used to reject with a TypeError (unhandled under setInterval)
+  assert.equal(calls, 1, 'the removed entry is not probed');
+  assert.deepEqual(monitor.getSubscriptions(), []);
+});
