@@ -529,3 +529,30 @@ test('movie-link holding a UUID still falls through to the plain-search tail', a
     '❌ 未能匹配到电影《/movies/details/9b4d3f2a-1111-2222-3333-444455556666》，若该片尚未定档或放排片，TGV 系统内暂无记录。'
   );
 });
+
+// --- fetch failure -------------------------------------------------------------
+
+for (const data of ['sub|VIV|157699|5785', 'suball|VIV|157699']) {
+  test(`${data.split('|')[0]} callback answers with an alert when the ticket fetch throws`, async (t) => {
+    isolate(t);
+    const writes = mockWrites(t);
+    const sent = [];
+    t.mock.method(axios, 'post', async (url, payload) => {
+      if (url.includes('api.telegram.org')) {
+        sent.push({ method: url.split('/').pop(), payload });
+        return { data: { ok: true, result: { message_id: 1 } } };
+      }
+      throw new Error('timeout of 8000ms exceeded');
+    });
+    store.setSubscriptions([]);
+
+    await handleCallbackQuery({ id: '1', data, message: { message_id: 2 } });
+
+    assert.equal(writes.length, 0);
+    assert.equal(store.getSubscriptions().length, 0);
+    assert.equal(sent.length, 1);
+    assert.equal(sent[0].method, 'answerCallbackQuery');
+    assert.equal(sent[0].payload.text, '查询票种失败，请稍后重试');
+    assert.equal(sent[0].payload.show_alert, true);
+  });
+}

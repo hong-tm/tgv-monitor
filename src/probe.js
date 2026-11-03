@@ -40,8 +40,6 @@ async function runProbeCycle() {
 
         if (hasAvailableQuota) {
           if (!sub.alerted) {
-            sub.alerted = true;
-            dirty = true;
             const alertMsg = `🎉 <b>TGV 放票通知！</b>\n\n` +
                              `电影: <b>《${escapeHtml(sub.movieTitle || '电影')}》</b>\n` +
                              `时间: <code>${escapeHtml(sub.showTime || '')}</code>\n` +
@@ -49,9 +47,14 @@ async function runProbeCycle() {
                              matchedDescriptions.join('\n') + `\n\n` +
                              `⏰ 触发时间: <code>${escapeHtml(now)}</code>\n` +
                              `👉 立即前往 TGV 结账！`;
-            await notifyUser(alertMsg, {
+            const sent = await notifyUser(alertMsg, {
               inline_keyboard: [[{ text: '🔍 查看当前票况', callback_data: 'refresh_dashboard' }]]
             });
+            // Mark delivered only on success; a failed send (502/429/timeout) retries next cycle
+            if (sent && sent.ok) {
+              sub.alerted = true;
+              dirty = true;
+            }
           }
         } else {
           if (sub.alerted) {

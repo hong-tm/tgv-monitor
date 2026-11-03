@@ -180,3 +180,51 @@ test('callTgApi pins IPv4 and gives the long-poll timeout slack', async (t) => {
   assert.equal(captured[0].timeout, 35000, 'default timeout stays 35s');
   assert.equal(captured[1].timeout, 45000, 'long-poll needs slack beyond the 30s server hold');
 });
+
+test('runProbeCycle keeps the alert pending when sendMessage fails, then delivers it once', async (t) => {
+  const writes = [];
+  t.mock.method(fs, 'writeFileSync', (file, data) => writes.push({ file, data }));
+  t.mock.method(console, 'error', () => {});
+
+  let telegramUp = false;
+  const sent = [];
+  t.mock.method(axios, 'post', async (url, data) => {
+    if (url.includes('api.telegram.org')) {
+      if (!telegramUp) throw Object.assign(new Error('Request failed with status code 502'), { response: { data: { ok: false } } });
+      sent.push(data);
+      return { data: { ok: true, result: { message_id: 1 } } };
+    }
+    return {
+      data: {
+        results: {
+          tickets: [{ ticketTypeCode: '5785', quantityAvailablePerOrder: 2, description: 'Promo', priceInCents: 600, longDescription: '' }]
+        }
+      }
+    };
+  });
+
+  const sub = {
+    sessionId: '90000002',
+    cinemaId: 'VIV',
+    movieTitle: 'M',
+    showTime: '20:30',
+    areaCategory: '0000000009',
+    targetCodes: ['5785'],
+    targetDetails: {},
+    alerted: false,
+    failCount: 0
+  };
+  monitor.setSubscriptions([sub]);
+  t.after(() => monitor.setSubscriptions([]));
+
+  await monitor.runProbeCycle();
+  assert.equal(sub.alerted, false, 'a failed send must not mark the alert as delivered');
+  assert.equal(writes.length, 0, 'nothing changed, nothing to persist');
+
+  telegramUp = true;
+  await monitor.runProbeCycle();
+  await monitor.runProbeCycle();
+  assert.equal(sent.length, 1, 'the alert is delivered exactly once after Telegram recovers');
+  assert.equal(sub.alerted, true);
+  assert.equal(writes.length, 1, 'alerted flag persisted once');
+});

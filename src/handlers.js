@@ -141,6 +141,17 @@ async function handleMessage(msg) {
   await handleSmartInput(text);
 }
 
+// fetchTickets throws on network errors; answer the callback so the button spinner stops, return null
+async function fetchTicketsOrAnswer(cb, cinemaId, sessionId) {
+  try {
+    return await fetchTickets(cinemaId, sessionId);
+  } catch (err) {
+    console.error(`[Callback] 票种查询失败 (${cinemaId}/${sessionId}): ${err.message}`);
+    await callTgApi('answerCallbackQuery', { callback_query_id: cb.id, text: '查询票种失败，请稍后重试', show_alert: true });
+    return null;
+  }
+}
+
 async function handleCallbackQuery(cb) {
   if (!cb || !cb.data) return;
   const msgId = cb.message?.message_id;
@@ -197,7 +208,8 @@ async function handleCallbackQuery(cb) {
     const cached = sessionCache.get(`${cinemaId}_${sessionId}`);
     const movieName = cached?.movieName || '电影';
     const showTime = cached?.showTime || '';
-    const tickets = await fetchTickets(cinemaId, sessionId);
+    const tickets = await fetchTicketsOrAnswer(cb, cinemaId, sessionId);
+    if (!tickets) return;
 
     const promoTickets = tickets.filter(t => 
       t.descriptionAlt?.includes('PROMO') || 
@@ -229,7 +241,8 @@ async function handleCallbackQuery(cb) {
     const cached = sessionCache.get(`${cinemaId}_${sessionId}`);
     const movieName = cached?.movieName || '电影';
     const showTime = cached?.showTime || '';
-    const tickets = await fetchTickets(cinemaId, sessionId);
+    const tickets = await fetchTicketsOrAnswer(cb, cinemaId, sessionId);
+    if (!tickets) return;
     const targetTicket = tickets.find(t => String(t.ticketTypeCode) === targetCode);
 
     if (!targetTicket) {
