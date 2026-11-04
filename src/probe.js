@@ -71,9 +71,12 @@ async function runProbeCycle() {
         console.error(`[Probe] 探测失败 (${sub.cinemaId}/${sub.sessionId}) failCount=${sub.failCount}: ${err.message}`);
         const idx = getSubscriptions().indexOf(sub);
         if (sub.failCount >= 15 && idx !== -1) {
-          getSubscriptions().splice(idx, 1);
-          dirty = true;
-          await notifyUser(`⚠️ <b>场次自动失效提醒</b>\n电影《${escapeHtml(sub.movieTitle || sub.sessionId)}》场次已下线，已自动移出监控。`);
+          const removed = await notifyUser(`⚠️ <b>场次自动失效提醒</b>\n电影《${escapeHtml(sub.movieTitle || sub.sessionId)}》场次已下线，已自动移出监控。`);
+          // Remove only once the notice landed; a failed send retries next cycle
+          if (removed && removed.ok) {
+            getSubscriptions().splice(idx, 1);
+            dirty = true;
+          }
         }
       }
     }

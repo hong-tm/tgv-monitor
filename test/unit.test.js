@@ -248,3 +248,34 @@ test('runProbeCycle survives the subscriptions array being replaced mid-cycle (/
   assert.equal(calls, 1, 'the removed entry is not probed');
   assert.deepEqual(monitor.getSubscriptions(), []);
 });
+
+test('runProbeCycle removes a 15x-failed session only once the removal notice is delivered', async (t) => {
+  const writes = [];
+  t.mock.method(fs, 'writeFileSync', (file, data) => writes.push(data));
+  t.mock.method(fs, 'renameSync', () => {});
+  t.mock.method(console, 'error', () => {});
+  let telegramUp = false;
+  const sent = [];
+  t.mock.method(axios, 'post', async (url) => {
+    if (url.includes('api.telegram.org')) {
+      if (!telegramUp) throw new Error('Request failed with status code 502');
+      sent.push(1);
+      return { data: { ok: true, result: {} } };
+    }
+    throw new Error('tgv down'); // fetchTickets fails -> failCount climbs
+  });
+  const mk = () => ({ sessionId: '90000005', cinemaId: 'VIV', movieTitle: 'M', showTime: '20:30', areaCategory: '0000000009', targetCodes: ['5785'], targetDetails: {}, alerted: false, failCount: 0 });
+  monitor.setSubscriptions([mk()]);
+  t.after(() => monitor.setSubscriptions([]));
+
+  for (let i = 0; i < 15; i++) await monitor.runProbeCycle();
+  assert.equal(monitor.getSubscriptions().length, 1, 'an undelivered removal notice must keep the session for retry');
+  assert.equal(monitor.getSubscriptions()[0].failCount, 15);
+  assert.equal(writes.length, 0, 'nothing changed, nothing to persist');
+
+  telegramUp = true;
+  await monitor.runProbeCycle();
+  assert.equal(monitor.getSubscriptions().length, 0, 'once the notice lands, the session is removed');
+  assert.equal(sent.length, 1, 'exactly one removal notice across all cycles');
+  assert.equal(writes.length, 1, 'the removal is persisted');
+});
