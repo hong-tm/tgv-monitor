@@ -305,12 +305,13 @@ test('sub callback creates the exact subscription record, persists once and repl
       targetCodes: ['5785'],
       targetDetails: { 5785: { name: 'Promo A', price: 6 } },
       alerted: false,
+      alertedCodes: [],
       failCount: 0
     }
   ]);
   assert.equal(
     Object.keys(parsed[0]).join(','),
-    'sessionId,cinemaId,movieTitle,showTime,areaCategory,targetCodes,targetDetails,alerted,failCount'
+    'sessionId,cinemaId,movieTitle,showTime,areaCategory,targetCodes,targetDetails,alerted,alertedCodes,failCount'
   );
 
   const answer = sent.find((c) => c.method === 'answerCallbackQuery');
@@ -562,7 +563,7 @@ for (const data of ['sub|VIV|157699|5785', 'suball|VIV|157699']) {
 
 // --- alert reset / composite delete ---------------------------------------------
 
-test('adding a ticket code to an already-alerted sub re-arms its alert', async (t) => {
+test('adding a ticket code to an already-alerted sub lets the new code alert (per-code state)', async (t) => {
   isolate(t);
   const writes = mockWrites(t);
   mockAxios(t, {
@@ -570,14 +571,15 @@ test('adding a ticket code to an already-alerted sub re-arms its alert', async (
       data: { results: { tickets: [{ ticketTypeCode: 5759, description: 'Promo B', priceInCents: 700, quantityAvailablePerOrder: 0 }] } }
     }
   });
-  store.setSubscriptions([{ sessionId: '157699', cinemaId: 'VIV', movieTitle: 'M', showTime: '20:30', areaCategory: '0000000009', targetCodes: ["5785"], targetDetails: {}, alerted: true, failCount: 0 }]);
+  store.setSubscriptions([{ sessionId: '157699', cinemaId: 'VIV', movieTitle: 'M', showTime: '20:30', areaCategory: '0000000009', targetCodes: ['5785'], targetDetails: {}, alerted: true, alertedCodes: ['5785'], failCount: 0 }]);
 
   await handleCallbackQuery({ id: '1', data: 'sub|VIV|157699|5759', message: { message_id: 2 } });
 
   assert.equal(writes.length, 1);
   const saved = JSON.parse(writes[0].data)[0];
   assert.deepEqual(saved.targetCodes, ['5785', '5759']);
-  assert.equal(saved.alerted, false, 'a new target code must be able to alert');
+  assert.ok(!saved.alertedCodes.includes('5759'), 'the new code is undelivered and can alert');
+  assert.deepEqual(saved.alertedCodes, ['5785'], 'the delivered code keeps its delivered state (no re-announce)');
 });
 
 test('/del buttons carry the cinema and the callback deletes only that (cinema, session) pair', async (t) => {

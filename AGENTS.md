@@ -8,7 +8,7 @@ Node.js (CommonJS) Telegram bot that monitors ticket availability for TGV,
 a Malaysian cinema chain (tgv.com.my). Polls the TGV boxoffice API every 60s and
 alerts the owner via Telegram when monitored promo tickets gain sellable quota.
 Stack: axios + raw Telegram Bot API over long-polling.
-Was a single 826-line file; split into `src/` modules in step 2 (`monitor.js` is now a 20-line entry shim; `src/` now holds 11 modules, 1035 lines; repo total 2364 lines).
+Was a single 826-line file; split into `src/` modules in step 2 (`monitor.js` is now a 20-line entry shim; `src/` now holds 11 modules, 1056 lines; repo total 2472 lines).
 
 ## CREDENTIALS
 Bot token and chat id are NOT in the repo. `src/config.js` resolves them in this order:
@@ -24,23 +24,23 @@ Live deployment (since 2026-09-25): the project-local `.env` is the active crede
 ```
 tgv-monitor/
 ├── monitor.js            # 20 lines: pm2 entry shim only; require.main guard + 6 re-exports
-├── src/                  # 11 modules, 1035 lines
+├── src/                  # 11 modules, 1056 lines
 │   ├── config.js         # 66 lines: TG_BOT_TOKEN, TG_CHAT_ID, CHECK_INTERVAL_MS, DATA_FILE, COMMON_HEADERS, DEFAULT_AREA_CATEGORY, PROMO_TICKET_CODES, assertCredentials
 │   ├── util.js           # 12 lines: escapeHtml
 │   ├── payload.js        # 50 lines: safeDecode, parseCallback
 │   ├── input-classifier.js  # 47 lines: classifyInput; text → intent (empty/seat-link|movie-link|uuid|session|alias|search)
 │   ├── telegram.js       # 47 lines: callTgApi, notifyUser, setupBotCommands
 │   ├── tgv-api.js        # 104 lines: generateUserSessionId, getTodayBusinessDate, fetchMovieByItemKey/Sessions/Tickets
-│   ├── store.js          # 93 lines: subscriptions (get/set accessors), sessionCache, cacheSession, upsertSubscription; load/save
+│   ├── store.js          # 101 lines: subscriptions (get/set accessors), sessionCache, cacheSession, upsertSubscription; load/save
 │   ├── views.js          # 177 lines: showSessionsByMovieId, showTicketSelection, sendRealtimeDashboard, sendHelp, sendSubscriptionList
 │   ├── handlers.js       # 282 lines: command/action router; handleSmartInput, handleMessage, handleCallbackQuery
-│   ├── probe.js          # 98 lines: probeRunning, runProbeCycle
+│   ├── probe.js          # 110 lines: probeRunning, runProbeCycle
 │   └── app.js            # 62 lines: lastUpdateId, skipBacklog, startTelegramPolling, main
-├── test/                 # 5 files, 1309 lines; node:test, offline (axios stubbed), 59 tests
+├── test/                 # 5 files, 1396 lines; node:test, offline (axios stubbed), 63 tests
 │   ├── child-process.test.js              # 73 lines: CLI / entry-shim smoke tests
 │   ├── classifier.test.js                 # 161 lines: classifyInput unit tests
 │   ├── handlers-characterization.test.js  # 596 lines: handler integration / characterization tests
-│   ├── store.test.js                      # 195 lines: store accessor and upsertSubscription tests
+│   ├── store.test.js                      # 220 lines: store accessor and upsertSubscription tests
 │   └── unit.test.js                       # 305 lines: callback_data byte-budget + source-level invariants
 ├── ecosystem.config.js   # pm2: name tgv-monitor, fork, NODE_OPTIONS ipv4first
 ├── package.json          # commonjs; main monitor.js; sole dep axios ^1.20.0
@@ -67,7 +67,7 @@ Dependency direction (acyclic): `config`/`util`/`payload`/`input-classifier` →
 | Persistence | `loadSubscriptions` / `saveSubscriptions` | src/store.js; synchronous fs, single state file |
 | Bot command registration | `setupBotCommands` | src/telegram.js |
 | Telegram transport | `callTgApi` / `notifyUser` | src/telegram.js; raw API, HTML parse_mode |
-| Tests | `test/` | `npm test`; offline, axios stubbed, 60 tests |
+| Tests | `test/` | `npm test`; offline, axios stubbed, 63 tests |
 | Process / ops | `ecosystem.config.js` | pm2 app name and script must match the live process |
 ## CODE MAP
 Split across `src/`; `monitor.js` is a thin pm2 entry shim. It re-exports only `escapeHtml parseCallback runProbeCycle startTelegramPolling getSubscriptions setSubscriptions`, so `probeRunning`, `lastUpdateId`, `safeDecode`, `loadSubscriptions`, `saveSubscriptions`, `sessionCache`, `cacheSession`, `upsertSubscription`, `classifyInput`, `sendHelp`, `sendSubscriptionList` and `setupBotCommands` are reachable only through their own module.
@@ -130,7 +130,7 @@ Split across `src/`; `monitor.js` is a thin pm2 entry shim. It re-exports only `
 node monitor.js              # run the bot in foreground (long-running)
 npm start                    # same as node monitor.js
 npm install                  # restore deps (axios only)
-npm test                     # node --test; test/ offline, axios stubbed, 60 tests
+npm test                     # node --test; test/ offline, axios stubbed, 63 tests
 pm2 startOrRestart ecosystem.config.js   # (re)start under pm2
 ```
 No build, lint, or format tooling exists.

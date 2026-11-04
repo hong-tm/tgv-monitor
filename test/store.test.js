@@ -71,12 +71,13 @@ test('upsertSubscription creates a new entry in canonical key order', (t) => {
     targetCodes: [],
     targetDetails: {},
     alerted: false,
+    alertedCodes: [],
     failCount: 0
   });
   // key order locks the serialized bytes of subscriptions.json
   assert.equal(
     Object.keys(returned).join(','),
-    'sessionId,cinemaId,movieTitle,showTime,areaCategory,targetCodes,targetDetails,alerted,failCount'
+    'sessionId,cinemaId,movieTitle,showTime,areaCategory,targetCodes,targetDetails,alerted,alertedCodes,failCount'
   );
 });
 
@@ -192,4 +193,28 @@ test('upsertSubscription does not clobber stored metadata with display placehold
   store.upsertSubscription('VIV', '157699', 'Real Title', '21:00');
   assert.equal(store.getSubscriptions()[0].movieTitle, 'Real Title');
   assert.equal(store.getSubscriptions()[0].showTime, '21:00');
+});
+
+test('loadSubscriptions refuses to start when the corrupt file cannot be quarantined', (t) => {
+  t.mock.method(fs, 'existsSync', () => true);
+  t.mock.method(fs, 'readFileSync', () => 'NOT JSON{{{');
+  t.mock.method(fs, 'renameSync', () => { throw new Error('EACCES: permission denied'); });
+  const errors = [];
+  t.mock.method(console, 'error', (...a) => errors.push(a.join(' ')));
+
+  assert.throws(() => store.loadSubscriptions(), /EACCES/, 'a failed backup must stop startup, not start empty');
+});
+
+test('upsertSubscription rejects every known display placeholder, not just 电影', (t) => {
+  const initialCopy = store.getSubscriptions();
+  t.after(() => store.setSubscriptions(initialCopy));
+
+  store.setSubscriptions([{
+    sessionId: '157699', cinemaId: 'VIV', movieTitle: 'Spider Man', showTime: '20:30',
+    areaCategory: '0000000009', targetCodes: [], targetDetails: {}, alerted: false, failCount: 0
+  }]);
+  for (const ph of ['电影', '场次 157699', '未知电影']) {
+    store.upsertSubscription('VIV', '157699', ph, '');
+    assert.equal(store.getSubscriptions()[0].movieTitle, 'Spider Man', `placeholder ${ph} must not overwrite`);
+  }
 });

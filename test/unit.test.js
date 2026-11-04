@@ -303,3 +303,39 @@ test('runProbeCycle removal splices the right entry when /del lands during the r
   assert.ok(!names.includes('CAND'), 'the dead candidate is removed');
   assert.ok(names.includes('Z'), 'the healthy Z must survive a stale-index splice');
 });
+
+test('adding an unavailable code does not re-announce the old code, and a newly opened code still alerts', async (t) => {
+  t.mock.method(fs, 'writeFileSync', () => {});
+  t.mock.method(fs, 'renameSync', () => {});
+  t.mock.method(console, 'error', () => {});
+  // A (5785) available, B (5759) closed -> then B opens
+  let bOpen = false;
+  const sent = [];
+  t.mock.method(axios, 'post', async (url) => {
+    if (url.includes('api.telegram.org')) { sent.push(1); return { data: { ok: true, result: {} } }; }
+    return { data: { results: { tickets: [
+      { ticketTypeCode: '5785', quantityAvailablePerOrder: 2, description: 'A', priceInCents: 600, longDescription: '' },
+      bOpen ? { ticketTypeCode: '5759', quantityAvailablePerOrder: 3, description: 'B', priceInCents: 700, longDescription: '' } : { ticketTypeCode: '5759', quantityAvailablePerOrder: 0, description: 'B', priceInCents: 700, longDescription: "Today's Promotion Limit Reached" }
+    ] } } };
+  });
+  const mk = () => ({ sessionId: '90000006', cinemaId: 'VIV', movieTitle: 'M', showTime: '20:30', areaCategory: '0000000009', targetCodes: ['5785'], targetDetails: {}, alerted: false, failCount: 0 });
+  monitor.setSubscriptions([mk()]);
+  t.after(() => monitor.setSubscriptions([]));
+
+  await monitor.runProbeCycle();
+  assert.equal(sent.length, 1, 'A alerts once');
+  assert.equal(monitor.getSubscriptions()[0].alerted, true);
+
+  // user adds unavailable code B; the delivered A must NOT be re-announced
+  const sub = monitor.getSubscriptions()[0];
+  sub.targetCodes.push('5759');
+
+  await monitor.runProbeCycle();
+  assert.equal(sent.length, 1, 'an added unavailable code must not re-announce the already-delivered A');
+  assert.deepEqual(sub.alertedCodes, ['5785']);
+
+  bOpen = true;
+  await monitor.runProbeCycle();
+  assert.equal(sent.length, 2, 'B opening must alert even while A is still available');
+  assert.ok(sub.alertedCodes.includes('5759'), 'B is now marked delivered');
+});

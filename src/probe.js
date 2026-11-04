@@ -26,23 +26,29 @@ async function runProbeCycle() {
 
         if (!tickets || tickets.length === 0) continue;
 
-        let hasAvailableQuota = false;
+        let availableCodes = [];
         let matchedDescriptions = [];
 
         for (const t of tickets) {
-          if (sub.targetCodes.includes(String(t.ticketTypeCode))) {
+          const code = String(t.ticketTypeCode);
+          if (sub.targetCodes.includes(code)) {
             const quota = t.quantityAvailablePerOrder;
             const limitReached = t.longDescription && t.longDescription.includes("Today's Promotion Limit Reached");
 
             if (quota > 0 && !limitReached) {
-              hasAvailableQuota = true;
+              availableCodes.push(code);
               matchedDescriptions.push(`🎫 <b>${escapeHtml(t.description)}</b> (剩余: ${quota} 张 | RM${t.priceInCents / 100})`);
             }
           }
         }
 
-        if (hasAvailableQuota) {
-          if (!sub.alerted) {
+        // Per-code alert state: a boolean flag shared by all codes both re-announced
+        // the old code and suppressed the new one (Greptile P1). alertedCodes tracks
+        // which codes have had their delivery; sub.alerted stays as the /list badge.
+        if (!Array.isArray(sub.alertedCodes)) sub.alertedCodes = [];
+        const fresh = availableCodes.filter(c => !sub.alertedCodes.includes(c));
+
+        if (fresh.length > 0) {
             const alertMsg = `🎉 <b>TGV 放票通知！</b>\n\n` +
                              `电影: <b>《${escapeHtml(sub.movieTitle || '电影')}》</b>\n` +
                              `时间: <code>${escapeHtml(sub.showTime || '')}</code>\n` +
@@ -55,13 +61,19 @@ async function runProbeCycle() {
             });
             // Mark delivered only on success; a failed send (502/429/timeout) retries next cycle
             if (sent && sent.ok) {
+              sub.alertedCodes.push(...fresh);
               sub.alerted = true;
               dirty = true;
             }
-          }
-        } else {
+        } else if (availableCodes.length === 0) {
+          // Nothing on sale any more: re-arm both the per-code state and the /list badge.
+          // (availableCodes non-empty but all delivered keeps the delivered state.)
           if (sub.alerted) {
             sub.alerted = false;
+            dirty = true;
+          }
+          if (sub.alertedCodes.length > 0) {
+            sub.alertedCodes = [];
             dirty = true;
           }
         }

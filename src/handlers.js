@@ -232,7 +232,6 @@ async function handleCallbackQuery(cb) {
       if (!sub.targetCodes.includes(code)) {
         sub.targetCodes.push(code);
         sub.targetDetails[code] = { name: pt.description, price: pt.priceInCents / 100 };
-        sub.alerted = false; // a new code must be able to alert even if an older one already did
       }
     }
     saveSubscriptions(getSubscriptions());
@@ -265,7 +264,6 @@ async function handleCallbackQuery(cb) {
       name: targetTicket.description,
       price: targetTicket.priceInCents / 100
     };
-    sub.alerted = false; // a new code must be able to alert even if an older one already did
     saveSubscriptions(getSubscriptions());
 
     await callTgApi('answerCallbackQuery', { callback_query_id: cb.id, text: `已添加 ${targetTicket.description}` });
