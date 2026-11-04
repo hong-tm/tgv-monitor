@@ -74,8 +74,10 @@ function upsertSubscription(cinemaId, sessionId, movieName, showTime) {
     };
     getSubscriptions().push(sub);
   } else {
-    sub.movieTitle = movieName;
-    sub.showTime = showTime;
+    // The handlers pass the display fallbacks ('电影', '') on a sessionCache miss;
+    // never clobber stored metadata with those.
+    if (movieName && movieName !== '电影') sub.movieTitle = movieName;
+    if (showTime) sub.showTime = showTime;
   }
   return sub;
 }

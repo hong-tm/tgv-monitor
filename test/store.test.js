@@ -171,3 +171,25 @@ test('loadSubscriptions quarantines a parseable but non-array body', (t) => {
   assert.deepEqual(store.loadSubscriptions(), []);
   assert.equal(renames.length, 1);
 });
+
+// --- placeholder metadata guard ------------------------------------------------
+
+test('upsertSubscription does not clobber stored metadata with display placeholders', (t) => {
+  const initialCopy = store.getSubscriptions();
+  t.after(() => store.setSubscriptions(initialCopy));
+
+  store.setSubscriptions([{
+    sessionId: '157699', cinemaId: 'VIV', movieTitle: 'Spider Man', showTime: '20:30',
+    areaCategory: '0000000009', targetCodes: [], targetDetails: {}, alerted: false, failCount: 0
+  }]);
+
+  // sessionCache miss: the handlers pass the display fallbacks
+  store.upsertSubscription('VIV', '157699', '电影', '');
+  assert.equal(store.getSubscriptions()[0].movieTitle, 'Spider Man', 'placeholder must not overwrite a stored title');
+  assert.equal(store.getSubscriptions()[0].showTime, '20:30', 'empty showTime must not overwrite a stored one');
+
+  // a real refresh still lands
+  store.upsertSubscription('VIV', '157699', 'Real Title', '21:00');
+  assert.equal(store.getSubscriptions()[0].movieTitle, 'Real Title');
+  assert.equal(store.getSubscriptions()[0].showTime, '21:00');
+});

@@ -360,8 +360,9 @@ test('sub callback duplicate target: no save, alert, but in-memory refresh is le
   const answer = sent.find((c) => c.method === 'answerCallbackQuery');
   assert.equal(answer.payload.text, '已在监控中');
   assert.equal(answer.payload.show_alert, true);
-  // Locked quirk: the in-memory title was refreshed even though nothing was saved.
-  assert.equal(store.getSubscriptions()[0].movieTitle, '电影');
+  // Locked quirk, updated with the F2 metadata guard: the placeholder refresh
+  // ('电影' from a sessionCache miss) no longer overwrites the stored title.
+  assert.equal(store.getSubscriptions()[0].movieTitle, 'STALE');
 });
 
 // --- 11 ----------------------------------------------------------------------
