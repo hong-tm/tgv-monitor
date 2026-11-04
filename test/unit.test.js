@@ -279,3 +279,27 @@ test('runProbeCycle removes a 15x-failed session only once the removal notice is
   assert.equal(sent.length, 1, 'exactly one removal notice across all cycles');
   assert.equal(writes.length, 1, 'the removal is persisted');
 });
+
+test('runProbeCycle removal splices the right entry when /del lands during the removal notice', async (t) => {
+  const writes = [];
+  t.mock.method(fs, 'writeFileSync', (file, data) => writes.push(data));
+  t.mock.method(fs, 'renameSync', () => {});
+  t.mock.method(console, 'error', () => {});
+  let delLanded = false;
+  t.mock.method(axios, 'post', async (url) => {
+    if (url.includes('api.telegram.org')) {
+      // the removal notice is in flight; /del of A replaces the array now
+      if (!delLanded) { delLanded = true; monitor.setSubscriptions(monitor.getSubscriptions().filter(s => s.sessionId !== 'A')); }
+      return { data: { ok: true, result: {} } };
+    }
+    throw new Error('tgv down');
+  });
+  const mk = (id, fc) => ({ sessionId: id, cinemaId: 'VIV', movieTitle: id, showTime: '20:30', areaCategory: '0000000009', targetCodes: ['5785'], targetDetails: {}, alerted: false, failCount: fc });
+  monitor.setSubscriptions([mk('A', 0), mk('CAND', 15), mk('Z', 0)]);
+  t.after(() => monitor.setSubscriptions([]));
+
+  await monitor.runProbeCycle();
+  const names = monitor.getSubscriptions().map(s => s.sessionId);
+  assert.ok(!names.includes('CAND'), 'the dead candidate is removed');
+  assert.ok(names.includes('Z'), 'the healthy Z must survive a stale-index splice');
+});

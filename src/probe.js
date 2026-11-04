@@ -69,13 +69,16 @@ async function runProbeCycle() {
       } catch (err) {
         sub.failCount = (sub.failCount || 0) + 1;
         console.error(`[Probe] 探测失败 (${sub.cinemaId}/${sub.sessionId}) failCount=${sub.failCount}: ${err.message}`);
-        const idx = getSubscriptions().indexOf(sub);
-        if (sub.failCount >= 15 && idx !== -1) {
+        if (sub.failCount >= 15) {
           const removed = await notifyUser(`⚠️ <b>场次自动失效提醒</b>\n电影《${escapeHtml(sub.movieTitle || sub.sessionId)}》场次已下线，已自动移出监控。`);
-          // Remove only once the notice landed; a failed send retries next cycle
+          // Remove only once the notice landed; a failed send retries next cycle.
+          // Recompute the index after the await: /del can shift the array mid-notice.
           if (removed && removed.ok) {
-            getSubscriptions().splice(idx, 1);
-            dirty = true;
+            const idx = getSubscriptions().indexOf(sub);
+            if (idx !== -1) {
+              getSubscriptions().splice(idx, 1);
+              dirty = true;
+            }
           }
         }
       }
