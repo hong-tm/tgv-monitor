@@ -34,14 +34,14 @@ tgv-monitor/
 │   ├── store.js          # 101 lines: subscriptions (get/set accessors), sessionCache, cacheSession, upsertSubscription; load/save
 │   ├── views.js          # 177 lines: showSessionsByMovieId, showTicketSelection, sendRealtimeDashboard, sendHelp, sendSubscriptionList
 │   ├── handlers.js       # 282 lines: command/action router; handleSmartInput, handleMessage, handleCallbackQuery
-│   ├── probe.js          # 114 lines: probeRunning, runProbeCycle
+│   ├── probe.js          # 115 lines: probeRunning, runProbeCycle
 │   └── app.js            # 62 lines: lastUpdateId, skipBacklog, startTelegramPolling, main
 ├── test/                 # 5 files, 1396 lines; node:test, offline (axios stubbed), 63 tests
 │   ├── child-process.test.js              # 73 lines: CLI / entry-shim smoke tests
 │   ├── classifier.test.js                 # 161 lines: classifyInput unit tests
 │   ├── handlers-characterization.test.js  # 596 lines: handler integration / characterization tests
 │   ├── store.test.js                      # 220 lines: store accessor and upsertSubscription tests
-│   └── unit.test.js                       # 361 lines: callback_data byte-budget + source-level invariants
+│   └── unit.test.js                       # 387 lines: callback_data byte-budget + source-level invariants
 ├── ecosystem.config.js   # pm2: name tgv-monitor, fork, NODE_OPTIONS ipv4first
 ├── package.json          # commonjs; main monitor.js; sole dep axios ^1.20.0
 ├── package-lock.json
@@ -67,7 +67,7 @@ Dependency direction (acyclic): `config`/`util`/`payload`/`input-classifier` →
 | Persistence | `loadSubscriptions` / `saveSubscriptions` | src/store.js; synchronous fs, single state file |
 | Bot command registration | `setupBotCommands` | src/telegram.js |
 | Telegram transport | `callTgApi` / `notifyUser` | src/telegram.js; raw API, HTML parse_mode |
-| Tests | `test/` | `npm test`; offline, axios stubbed, 64 tests |
+| Tests | `test/` | `npm test`; offline, axios stubbed, 65 tests |
 | Process / ops | `ecosystem.config.js` | pm2 app name and script must match the live process |
 ## CODE MAP
 Split across `src/`; `monitor.js` is a thin pm2 entry shim. It re-exports only `escapeHtml parseCallback runProbeCycle startTelegramPolling getSubscriptions setSubscriptions`, so `probeRunning`, `lastUpdateId`, `safeDecode`, `loadSubscriptions`, `saveSubscriptions`, `sessionCache`, `cacheSession`, `upsertSubscription`, `classifyInput`, `sendHelp`, `sendSubscriptionList` and `setupBotCommands` are reachable only through their own module.
@@ -130,7 +130,7 @@ Split across `src/`; `monitor.js` is a thin pm2 entry shim. It re-exports only `
 node monitor.js              # run the bot in foreground (long-running)
 npm start                    # same as node monitor.js
 npm install                  # restore deps (axios only)
-npm test                     # node --test; test/ offline, axios stubbed, 64 tests
+npm test                     # node --test; test/ offline, axios stubbed, 65 tests
 pm2 startOrRestart ecosystem.config.js   # (re)start under pm2
 ```
 No build, lint, or format tooling exists.

@@ -46,9 +46,10 @@ async function runProbeCycle() {
         // the old code and suppressed the new one (Greptile P1). alertedCodes tracks
         // which codes have had their delivery; sub.alerted stays as the /list badge.
         if (!Array.isArray(sub.alertedCodes)) {
-          // Legacy on-disk shape (alerted: true, no alertedCodes): treat the whole
-          // monitored set as already delivered instead of re-announcing on upgrade.
-          sub.alertedCodes = sub.alerted ? sub.targetCodes.slice() : [];
+          // Legacy on-disk shape (alerted: true, no alertedCodes). The old flag only
+          // ever meant "the codes on sale at the time were delivered" — mark exactly
+          // those, so a not-yet-opened code still alerts when it opens.
+          sub.alertedCodes = sub.alerted ? availableCodes.slice() : [];
         }
         const fresh = availableCodes.filter(c => !sub.alertedCodes.includes(c));
 

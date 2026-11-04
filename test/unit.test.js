@@ -359,3 +359,29 @@ test('a legacy alerted sub (no alertedCodes) does not re-announce on the first p
   assert.equal(sent.length, 0, 'a legacy already-delivered alert must not re-announce after upgrade');
   assert.deepEqual(monitor.getSubscriptions()[0].alertedCodes, ['5785'], 'delivery state migrates to per-code on the first probe');
 });
+
+test('legacy upgrade marks only currently-available codes delivered; an unavailable code still alerts later', async (t) => {
+  t.mock.method(fs, 'writeFileSync', () => {});
+  t.mock.method(fs, 'renameSync', () => {});
+  t.mock.method(console, 'error', () => {});
+  let bOpen = false;
+  const sent = [];
+  t.mock.method(axios, 'post', async (url) => {
+    if (url.includes('api.telegram.org')) { sent.push(1); return { data: { ok: true, result: {} } }; }
+    return { data: { results: { tickets: [
+      { ticketTypeCode: '5785', quantityAvailablePerOrder: 2, description: 'A', priceInCents: 600, longDescription: '' },
+      bOpen ? { ticketTypeCode: '5759', quantityAvailablePerOrder: 3, description: 'B', priceInCents: 700, longDescription: '' } : { ticketTypeCode: '5759', quantityAvailablePerOrder: 0, description: 'B', priceInCents: 700, longDescription: "Today's Promotion Limit Reached" }
+    ] } } };
+  });
+  // legacy on-disk shape: A delivered (alerted true), B never opened yet
+  monitor.setSubscriptions([{ sessionId: '90000008', cinemaId: 'VIV', movieTitle: 'M', showTime: '20:30', areaCategory: '0000000009', targetCodes: ['5785', '5759'], targetDetails: {}, alerted: true, failCount: 0 }]);
+  t.after(() => monitor.setSubscriptions([]));
+
+  await monitor.runProbeCycle();
+  assert.equal(sent.length, 0, 'A stays delivered, no re-announcement after upgrade');
+  assert.deepEqual(monitor.getSubscriptions()[0].alertedCodes, ['5785'], 'only the currently-available code is migrated as delivered');
+
+  bOpen = true;
+  await monitor.runProbeCycle();
+  assert.equal(sent.length, 1, 'B opening must still alert');
+});
