@@ -129,7 +129,7 @@ async function handleMessage(msg) {
       }
       const delButtons = getSubscriptions().map(s => ([{
         text: `❌ 删除: 《${s.movieTitle || '未知'}》 (${s.showTime || s.sessionId})`,
-        callback_data: `del|${s.sessionId}`
+        callback_data: `del|${s.cinemaId}|${s.sessionId}`
       }]));
 
       return await notifyUser('🗑️ <b>请点击下方按钮选择要删除的场次：</b>', {
@@ -139,6 +139,17 @@ async function handleMessage(msg) {
   }
 
   await handleSmartInput(text);
+}
+
+// fetchTickets throws on network errors; answer the callback so the button spinner stops, return null
+async function fetchTicketsOrAnswer(cb, cinemaId, sessionId) {
+  try {
+    return await fetchTickets(cinemaId, sessionId);
+  } catch (err) {
+    console.error(`[Callback] 票种查询失败 (${cinemaId}/${sessionId}): ${err.message}`);
+    await callTgApi('answerCallbackQuery', { callback_query_id: cb.id, text: '查询票种失败，请稍后重试', show_alert: true });
+    return null;
+  }
 }
 
 async function handleCallbackQuery(cb) {
@@ -181,11 +192,15 @@ async function handleCallbackQuery(cb) {
   }
 
   if (action === 'del') {
-    const sessionId = args[0];
-    const target = getSubscriptions().find(s => s.sessionId === sessionId);
+    // del|<cinema>|<session>; legacy del|<session> / del_<session> buttons match on session only
+    const [first, second] = args;
+    const sessionId = second === undefined ? first : second;
+    const cinemaId = second === undefined ? null : first;
+    const matches = s => s.sessionId === sessionId && (cinemaId === null || s.cinemaId === cinemaId);
+    const target = getSubscriptions().find(matches);
     const movieName = target?.movieTitle || sessionId;
 
-    setSubscriptions(getSubscriptions().filter(s => s.sessionId !== sessionId));
+    setSubscriptions(getSubscriptions().filter(s => !matches(s)));
     saveSubscriptions(getSubscriptions());
 
     await callTgApi('answerCallbackQuery', { callback_query_id: cb.id, text: `已移除《${movieName}》` });
@@ -197,7 +212,8 @@ async function handleCallbackQuery(cb) {
     const cached = sessionCache.get(`${cinemaId}_${sessionId}`);
     const movieName = cached?.movieName || '电影';
     const showTime = cached?.showTime || '';
-    const tickets = await fetchTickets(cinemaId, sessionId);
+    const tickets = await fetchTicketsOrAnswer(cb, cinemaId, sessionId);
+    if (!tickets) return;
 
     const promoTickets = tickets.filter(t => 
       t.descriptionAlt?.includes('PROMO') || 
@@ -229,7 +245,8 @@ async function handleCallbackQuery(cb) {
     const cached = sessionCache.get(`${cinemaId}_${sessionId}`);
     const movieName = cached?.movieName || '电影';
     const showTime = cached?.showTime || '';
-    const tickets = await fetchTickets(cinemaId, sessionId);
+    const tickets = await fetchTicketsOrAnswer(cb, cinemaId, sessionId);
+    if (!tickets) return;
     const targetTicket = tickets.find(t => String(t.ticketTypeCode) === targetCode);
 
     if (!targetTicket) {

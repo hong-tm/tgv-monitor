@@ -7,15 +7,40 @@ function loadSubscriptions() {
     fs.writeFileSync(DATA_FILE, JSON.stringify(defaultData, null, 2));
     return defaultData;
   }
+  let parsed = null;
   try {
-    return JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+    parsed = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
   } catch (e) {
+    parsed = null;
+  }
+  if (!Array.isArray(parsed)) {
+    // Quarantine instead of silently returning []: the next save would otherwise
+    // overwrite the only copy of the user's subscriptions with an empty list.
+    // If the backup itself fails, refuse to start rather than risk the wipe.
+    const quarantine = `${DATA_FILE}.corrupt-${Date.now()}`;
+    try {
+      fs.renameSync(DATA_FILE, quarantine);
+      console.error(`[Store] subscriptions.json 无法解析，已备份到 ${quarantine} 并从空列表启动`);
+    } catch (e2) {
+      console.error(`[Store] subscriptions.json 无法解析且备份失败: ${e2.message}`);
+      throw new Error(`subscriptions.json is corrupt and could not be backed up (${e2.message}); refusing to start to avoid wiping it`);
+    }
     return [];
   }
+  return parsed;
 }
 
 function saveSubscriptions(data) {
-  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+  // Atomic write: a crash mid-write must never truncate the live file
+  const tmp = `${DATA_FILE}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(data, null, 2));
+  fs.renameSync(tmp, DATA_FILE);
+}
+
+// Display-only fallbacks the handlers pass when the session cache misses; never store these
+const PLACEHOLDER_TITLES = new Set(['电影', '未知电影']);
+function isDisplayPlaceholder(name) {
+  return !name || PLACEHOLDER_TITLES.has(name) || /^场次 /.test(name);
 }
 
 let subscriptions = loadSubscriptions();
@@ -53,12 +78,14 @@ function upsertSubscription(cinemaId, sessionId, movieName, showTime) {
       targetCodes: [],
       targetDetails: {},
       alerted: false,
+      alertedCodes: [],
       failCount: 0
     };
     getSubscriptions().push(sub);
   } else {
-    sub.movieTitle = movieName;
-    sub.showTime = showTime;
+    // The handlers pass display placeholders on a sessionCache miss; never clobber metadata.
+    if (!isDisplayPlaceholder(movieName)) sub.movieTitle = movieName;
+    if (showTime) sub.showTime = showTime;
   }
   return sub;
 }

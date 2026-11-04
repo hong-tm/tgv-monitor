@@ -46,9 +46,9 @@ async function startTelegramPolling() {
 
 async function main() {
   assertCredentials();
-  console.log('TGV 智能排片系统已修正启动...');
+  console.log('TGV 监控系统启动中...');
   await setupBotCommands();
-  await notifyUser('🤖 <b>TGV 监控系统已针对 /uuid 与排片日期修正完毕！</b>');
+  await notifyUser('🤖 <b>TGV 监控系统已启动</b>');
 
   startTelegramPolling();
   runProbeCycle();

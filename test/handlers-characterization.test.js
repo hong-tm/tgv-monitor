@@ -42,6 +42,8 @@ function mockWrites(t) {
   t.mock.method(fs, 'writeFileSync', (file, data) => {
     writes.push({ file, data });
   });
+  // saveSubscriptions renames the tmp file over the live one; keep it off the real fs
+  t.mock.method(fs, 'renameSync', () => {});
   return writes;
 }
 
@@ -303,12 +305,13 @@ test('sub callback creates the exact subscription record, persists once and repl
       targetCodes: ['5785'],
       targetDetails: { 5785: { name: 'Promo A', price: 6 } },
       alerted: false,
+      alertedCodes: [],
       failCount: 0
     }
   ]);
   assert.equal(
     Object.keys(parsed[0]).join(','),
-    'sessionId,cinemaId,movieTitle,showTime,areaCategory,targetCodes,targetDetails,alerted,failCount'
+    'sessionId,cinemaId,movieTitle,showTime,areaCategory,targetCodes,targetDetails,alerted,alertedCodes,failCount'
   );
 
   const answer = sent.find((c) => c.method === 'answerCallbackQuery');
@@ -358,8 +361,9 @@ test('sub callback duplicate target: no save, alert, but in-memory refresh is le
   const answer = sent.find((c) => c.method === 'answerCallbackQuery');
   assert.equal(answer.payload.text, '已在监控中');
   assert.equal(answer.payload.show_alert, true);
-  // Locked quirk: the in-memory title was refreshed even though nothing was saved.
-  assert.equal(store.getSubscriptions()[0].movieTitle, '电影');
+  // Locked quirk, updated with the F2 metadata guard: the placeholder refresh
+  // ('电影' from a sessionCache miss) no longer overwrites the stored title.
+  assert.equal(store.getSubscriptions()[0].movieTitle, 'STALE');
 });
 
 // --- 11 ----------------------------------------------------------------------
@@ -528,4 +532,70 @@ test('movie-link holding a UUID still falls through to the plain-search tail', a
     sent[2].payload.text,
     '❌ 未能匹配到电影《/movies/details/9b4d3f2a-1111-2222-3333-444455556666》，若该片尚未定档或放排片，TGV 系统内暂无记录。'
   );
+});
+
+// --- fetch failure -------------------------------------------------------------
+
+for (const data of ['sub|VIV|157699|5785', 'suball|VIV|157699']) {
+  test(`${data.split('|')[0]} callback answers with an alert when the ticket fetch throws`, async (t) => {
+    isolate(t);
+    const writes = mockWrites(t);
+    const sent = [];
+    t.mock.method(axios, 'post', async (url, payload) => {
+      if (url.includes('api.telegram.org')) {
+        sent.push({ method: url.split('/').pop(), payload });
+        return { data: { ok: true, result: { message_id: 1 } } };
+      }
+      throw new Error('timeout of 8000ms exceeded');
+    });
+    store.setSubscriptions([]);
+
+    await handleCallbackQuery({ id: '1', data, message: { message_id: 2 } });
+
+    assert.equal(writes.length, 0);
+    assert.equal(store.getSubscriptions().length, 0);
+    assert.equal(sent.length, 1);
+    assert.equal(sent[0].method, 'answerCallbackQuery');
+    assert.equal(sent[0].payload.text, '查询票种失败，请稍后重试');
+    assert.equal(sent[0].payload.show_alert, true);
+  });
+}
+
+// --- alert reset / composite delete ---------------------------------------------
+
+test('adding a ticket code to an already-alerted sub lets the new code alert (per-code state)', async (t) => {
+  isolate(t);
+  const writes = mockWrites(t);
+  mockAxios(t, {
+    moviesession_gettickets: {
+      data: { results: { tickets: [{ ticketTypeCode: 5759, description: 'Promo B', priceInCents: 700, quantityAvailablePerOrder: 0 }] } }
+    }
+  });
+  store.setSubscriptions([{ sessionId: '157699', cinemaId: 'VIV', movieTitle: 'M', showTime: '20:30', areaCategory: '0000000009', targetCodes: ['5785'], targetDetails: {}, alerted: true, alertedCodes: ['5785'], failCount: 0 }]);
+
+  await handleCallbackQuery({ id: '1', data: 'sub|VIV|157699|5759', message: { message_id: 2 } });
+
+  assert.equal(writes.length, 1);
+  const saved = JSON.parse(writes[0].data)[0];
+  assert.deepEqual(saved.targetCodes, ['5785', '5759']);
+  assert.ok(!saved.alertedCodes.includes('5759'), 'the new code is undelivered and can alert');
+  assert.deepEqual(saved.alertedCodes, ['5785'], 'the delivered code keeps its delivered state (no re-announce)');
+});
+
+test('/del buttons carry the cinema and the callback deletes only that (cinema, session) pair', async (t) => {
+  isolate(t);
+  const writes = mockWrites(t);
+  const { sent } = mockAxios(t);
+  store.setSubscriptions([{ sessionId: '157699', cinemaId: 'VIV', movieTitle: 'A', showTime: '20:30', areaCategory: '0000000009', targetCodes: ["5785"], targetDetails: {}, alerted: false, failCount: 0 }, { sessionId: '157699', cinemaId: 'OTHER', movieTitle: 'B', showTime: '20:30', areaCategory: '0000000009', targetCodes: ["5785"], targetDetails: {}, alerted: false, failCount: 0 }]);
+
+  await handleMessage({ text: '/del', chat: { id: TG_CHAT_ID } });
+  const buttons = lastSend(sent).payload.reply_markup.inline_keyboard.map((row) => row[0].callback_data);
+  assert.deepEqual(buttons, ['del|VIV|157699', 'del|OTHER|157699']);
+
+  await handleCallbackQuery({ id: '1', data: 'del|OTHER|157699', message: { message_id: 2 } });
+
+  assert.deepEqual(store.getSubscriptions().map((s) => s.cinemaId), ['VIV']);
+  assert.equal(writes.length, 1);
+  const answer = sent.find((c) => c.method === 'answerCallbackQuery');
+  assert.equal(answer.payload.text, '已移除《B》');
 });

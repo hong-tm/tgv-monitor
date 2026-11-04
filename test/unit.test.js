@@ -180,3 +180,208 @@ test('callTgApi pins IPv4 and gives the long-poll timeout slack', async (t) => {
   assert.equal(captured[0].timeout, 35000, 'default timeout stays 35s');
   assert.equal(captured[1].timeout, 45000, 'long-poll needs slack beyond the 30s server hold');
 });
+
+test('runProbeCycle keeps the alert pending when sendMessage fails, then delivers it once', async (t) => {
+  const writes = [];
+  t.mock.method(fs, 'writeFileSync', (file, data) => writes.push({ file, data }));
+  t.mock.method(fs, 'renameSync', () => {});
+  t.mock.method(console, 'error', () => {});
+
+  let telegramUp = false;
+  const sent = [];
+  t.mock.method(axios, 'post', async (url, data) => {
+    if (url.includes('api.telegram.org')) {
+      if (!telegramUp) throw Object.assign(new Error('Request failed with status code 502'), { response: { data: { ok: false } } });
+      sent.push(data);
+      return { data: { ok: true, result: { message_id: 1 } } };
+    }
+    return {
+      data: {
+        results: {
+          tickets: [{ ticketTypeCode: '5785', quantityAvailablePerOrder: 2, description: 'Promo', priceInCents: 600, longDescription: '' }]
+        }
+      }
+    };
+  });
+
+  const sub = {
+    sessionId: '90000002',
+    cinemaId: 'VIV',
+    movieTitle: 'M',
+    showTime: '20:30',
+    areaCategory: '0000000009',
+    targetCodes: ['5785'],
+    targetDetails: {},
+    alerted: false,
+    failCount: 0
+  };
+  monitor.setSubscriptions([sub]);
+  t.after(() => monitor.setSubscriptions([]));
+
+  await monitor.runProbeCycle();
+  assert.equal(sub.alerted, false, 'a failed send must not mark the alert as delivered');
+  assert.equal(writes.length, 0, 'nothing changed, nothing to persist');
+
+  telegramUp = true;
+  await monitor.runProbeCycle();
+  await monitor.runProbeCycle();
+  assert.equal(sent.length, 1, 'the alert is delivered exactly once after Telegram recovers');
+  assert.equal(sub.alerted, true);
+  assert.equal(writes.length, 1, 'alerted flag persisted once');
+});
+
+test('runProbeCycle survives the subscriptions array being replaced mid-cycle (/del)', async (t) => {
+  t.mock.method(fs, 'writeFileSync', () => {});
+  t.mock.method(console, 'error', () => {});
+  let calls = 0;
+  t.mock.method(axios, 'post', async (url) => {
+    if (url.includes('api.telegram.org')) return { data: { ok: true, result: {} } };
+    calls++;
+    if (calls === 1) monitor.setSubscriptions([]); // /del lands while the first fetch is in flight
+    return { data: { results: { tickets: [] } } };
+  });
+  const mk = (id) => ({ sessionId: id, cinemaId: 'VIV', movieTitle: 'M', showTime: '', areaCategory: '0000000009', targetCodes: ['5785'], targetDetails: {}, alerted: false, failCount: 0 });
+  monitor.setSubscriptions([mk('90000003'), mk('90000004')]);
+  t.after(() => monitor.setSubscriptions([]));
+
+  await monitor.runProbeCycle(); // used to reject with a TypeError (unhandled under setInterval)
+  assert.equal(calls, 1, 'the removed entry is not probed');
+  assert.deepEqual(monitor.getSubscriptions(), []);
+});
+
+test('runProbeCycle removes a 15x-failed session only once the removal notice is delivered', async (t) => {
+  const writes = [];
+  t.mock.method(fs, 'writeFileSync', (file, data) => writes.push(data));
+  t.mock.method(fs, 'renameSync', () => {});
+  t.mock.method(console, 'error', () => {});
+  let telegramUp = false;
+  const sent = [];
+  t.mock.method(axios, 'post', async (url) => {
+    if (url.includes('api.telegram.org')) {
+      if (!telegramUp) throw new Error('Request failed with status code 502');
+      sent.push(1);
+      return { data: { ok: true, result: {} } };
+    }
+    throw new Error('tgv down'); // fetchTickets fails -> failCount climbs
+  });
+  const mk = () => ({ sessionId: '90000005', cinemaId: 'VIV', movieTitle: 'M', showTime: '20:30', areaCategory: '0000000009', targetCodes: ['5785'], targetDetails: {}, alerted: false, failCount: 0 });
+  monitor.setSubscriptions([mk()]);
+  t.after(() => monitor.setSubscriptions([]));
+
+  for (let i = 0; i < 15; i++) await monitor.runProbeCycle();
+  assert.equal(monitor.getSubscriptions().length, 1, 'an undelivered removal notice must keep the session for retry');
+  assert.equal(monitor.getSubscriptions()[0].failCount, 15);
+  assert.equal(writes.length, 0, 'nothing changed, nothing to persist');
+
+  telegramUp = true;
+  await monitor.runProbeCycle();
+  assert.equal(monitor.getSubscriptions().length, 0, 'once the notice lands, the session is removed');
+  assert.equal(sent.length, 1, 'exactly one removal notice across all cycles');
+  assert.equal(writes.length, 1, 'the removal is persisted');
+});
+
+test('runProbeCycle removal splices the right entry when /del lands during the removal notice', async (t) => {
+  const writes = [];
+  t.mock.method(fs, 'writeFileSync', (file, data) => writes.push(data));
+  t.mock.method(fs, 'renameSync', () => {});
+  t.mock.method(console, 'error', () => {});
+  let delLanded = false;
+  t.mock.method(axios, 'post', async (url) => {
+    if (url.includes('api.telegram.org')) {
+      // the removal notice is in flight; /del of A replaces the array now
+      if (!delLanded) { delLanded = true; monitor.setSubscriptions(monitor.getSubscriptions().filter(s => s.sessionId !== 'A')); }
+      return { data: { ok: true, result: {} } };
+    }
+    throw new Error('tgv down');
+  });
+  const mk = (id, fc) => ({ sessionId: id, cinemaId: 'VIV', movieTitle: id, showTime: '20:30', areaCategory: '0000000009', targetCodes: ['5785'], targetDetails: {}, alerted: false, failCount: fc });
+  monitor.setSubscriptions([mk('A', 0), mk('CAND', 15), mk('Z', 0)]);
+  t.after(() => monitor.setSubscriptions([]));
+
+  await monitor.runProbeCycle();
+  const names = monitor.getSubscriptions().map(s => s.sessionId);
+  assert.ok(!names.includes('CAND'), 'the dead candidate is removed');
+  assert.ok(names.includes('Z'), 'the healthy Z must survive a stale-index splice');
+});
+
+test('adding an unavailable code does not re-announce the old code, and a newly opened code still alerts', async (t) => {
+  t.mock.method(fs, 'writeFileSync', () => {});
+  t.mock.method(fs, 'renameSync', () => {});
+  t.mock.method(console, 'error', () => {});
+  // A (5785) available, B (5759) closed -> then B opens
+  let bOpen = false;
+  const sent = [];
+  t.mock.method(axios, 'post', async (url) => {
+    if (url.includes('api.telegram.org')) { sent.push(1); return { data: { ok: true, result: {} } }; }
+    return { data: { results: { tickets: [
+      { ticketTypeCode: '5785', quantityAvailablePerOrder: 2, description: 'A', priceInCents: 600, longDescription: '' },
+      bOpen ? { ticketTypeCode: '5759', quantityAvailablePerOrder: 3, description: 'B', priceInCents: 700, longDescription: '' } : { ticketTypeCode: '5759', quantityAvailablePerOrder: 0, description: 'B', priceInCents: 700, longDescription: "Today's Promotion Limit Reached" }
+    ] } } };
+  });
+  const mk = () => ({ sessionId: '90000006', cinemaId: 'VIV', movieTitle: 'M', showTime: '20:30', areaCategory: '0000000009', targetCodes: ['5785'], targetDetails: {}, alerted: false, failCount: 0 });
+  monitor.setSubscriptions([mk()]);
+  t.after(() => monitor.setSubscriptions([]));
+
+  await monitor.runProbeCycle();
+  assert.equal(sent.length, 1, 'A alerts once');
+  assert.equal(monitor.getSubscriptions()[0].alerted, true);
+
+  // user adds unavailable code B; the delivered A must NOT be re-announced
+  const sub = monitor.getSubscriptions()[0];
+  sub.targetCodes.push('5759');
+
+  await monitor.runProbeCycle();
+  assert.equal(sent.length, 1, 'an added unavailable code must not re-announce the already-delivered A');
+  assert.deepEqual(sub.alertedCodes, ['5785']);
+
+  bOpen = true;
+  await monitor.runProbeCycle();
+  assert.equal(sent.length, 2, 'B opening must alert even while A is still available');
+  assert.ok(sub.alertedCodes.includes('5759'), 'B is now marked delivered');
+});
+
+test('a legacy alerted sub (no alertedCodes) does not re-announce on the first probe after upgrade', async (t) => {
+  t.mock.method(fs, 'writeFileSync', () => {});
+  t.mock.method(fs, 'renameSync', () => {});
+  t.mock.method(console, 'error', () => {});
+  const sent = [];
+  t.mock.method(axios, 'post', async (url) => {
+    if (url.includes('api.telegram.org')) { sent.push(1); return { data: { ok: true, result: {} } }; }
+    return { data: { results: { tickets: [
+      { ticketTypeCode: '5785', quantityAvailablePerOrder: 2, description: 'A', priceInCents: 600, longDescription: '' }
+    ] } } };
+  });
+  // legacy on-disk shape: alerted true, no alertedCodes field
+  monitor.setSubscriptions([{ sessionId: '90000007', cinemaId: 'VIV', movieTitle: 'M', showTime: '20:30', areaCategory: '0000000009', targetCodes: ['5785'], targetDetails: {}, alerted: true, failCount: 0 }]);
+  t.after(() => monitor.setSubscriptions([]));
+
+  await monitor.runProbeCycle();
+  assert.equal(sent.length, 0, 'a legacy already-delivered alert must not re-announce after upgrade');
+  assert.deepEqual(monitor.getSubscriptions()[0].alertedCodes, ['5785'], 'delivery state migrates to per-code on the first probe');
+});
+
+test('legacy upgrade marks only currently-available codes delivered; an unavailable code still alerts later', async (t) => {
+  t.mock.method(fs, 'writeFileSync', () => {});
+  t.mock.method(fs, 'renameSync', () => {});
+  t.mock.method(console, 'error', () => {});
+  let bOpen = false;
+  const sent = [];
+  t.mock.method(axios, 'post', async (url) => {
+    if (url.includes('api.telegram.org')) { sent.push(1); return { data: { ok: true, result: {} } }; }
+    return { data: { results: { tickets: [
+      { ticketTypeCode: '5785', quantityAvailablePerOrder: 2, description: 'A', priceInCents: 600, longDescription: '' },
+      bOpen ? { ticketTypeCode: '5759', quantityAvailablePerOrder: 3, description: 'B', priceInCents: 700, longDescription: '' } : { ticketTypeCode: '5759', quantityAvailablePerOrder: 0, description: 'B', priceInCents: 700, longDescription: "Today's Promotion Limit Reached" }
+    ] } } };
+  });
+  // legacy on-disk shape: A delivered (alerted true), B never opened yet
+  monitor.setSubscriptions([{ sessionId: '90000008', cinemaId: 'VIV', movieTitle: 'M', showTime: '20:30', areaCategory: '0000000009', targetCodes: ['5785', '5759'], targetDetails: {}, alerted: true, failCount: 0 }]);
+  t.after(() => monitor.setSubscriptions([]));
+
+  await monitor.runProbeCycle();
+  assert.equal(sent.length, 0, 'A stays delivered, no re-announcement after upgrade');
+  assert.deepEqual(monitor.getSubscriptions()[0].alertedCodes, ['5785'], 'only the currently-available code is migrated as delivered');
+
+  bOpen = true;
+  await monitor.runProbeCycle();
+  assert.equal(sent.length, 1, 'B opening must still alert');
+});

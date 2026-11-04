@@ -4,6 +4,8 @@
 # Subscription state (runtime artifact, contains personal viewing data; not tracked)
 subscriptions.json
 subscriptions.json.bak
+subscriptions.json.tmp
+subscriptions.json.corrupt-*
 
 # Dependencies and indexes (local artifacts)
 node_modules/

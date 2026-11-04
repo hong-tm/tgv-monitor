@@ -71,12 +71,13 @@ test('upsertSubscription creates a new entry in canonical key order', (t) => {
     targetCodes: [],
     targetDetails: {},
     alerted: false,
+    alertedCodes: [],
     failCount: 0
   });
   // key order locks the serialized bytes of subscriptions.json
   assert.equal(
     Object.keys(returned).join(','),
-    'sessionId,cinemaId,movieTitle,showTime,areaCategory,targetCodes,targetDetails,alerted,failCount'
+    'sessionId,cinemaId,movieTitle,showTime,areaCategory,targetCodes,targetDetails,alerted,alertedCodes,failCount'
   );
 });
 
@@ -126,4 +127,94 @@ test('upsertSubscription refreshes an existing entry without resetting state or 
   assert.equal(fs.writeFileSync.mock.callCount(), 0, 'update must not persist');
   store.upsertSubscription('VIV', '999999', 'Fresh', '10:00');
   assert.equal(fs.writeFileSync.mock.callCount(), 0, 'create must not persist either');
+});
+
+// --- atomic persistence -------------------------------------------------------
+
+test('saveSubscriptions writes atomically: a sibling tmp file, then rename over the data file', (t) => {
+  const calls = [];
+  t.mock.method(fs, 'writeFileSync', (file, data) => calls.push(['write', file, data]));
+  t.mock.method(fs, 'renameSync', (from, to) => calls.push(['rename', from, to]));
+  const { DATA_FILE } = require('../src/config.js');
+
+  store.saveSubscriptions([{ sessionId: '1' }]);
+
+  assert.equal(calls.length, 2, 'exactly one write and one rename');
+  assert.equal(calls[0][0], 'write');
+  assert.ok(calls[0][1].startsWith(DATA_FILE + '.'), 'the write must target a sibling temp file, not the live file');
+  assert.deepEqual(JSON.parse(calls[0][2]), [{ sessionId: '1' }]);
+  assert.deepEqual(calls[1], ['rename', calls[0][1], DATA_FILE], 'the rename must replace the live file');
+});
+
+test('loadSubscriptions quarantines an unparseable data file instead of silently returning []', (t) => {
+  const renames = [];
+  t.mock.method(fs, 'existsSync', () => true);
+  t.mock.method(fs, 'readFileSync', () => 'NOT JSON{{{');
+  t.mock.method(fs, 'renameSync', (from, to) => renames.push([from, to]));
+  const errors = [];
+  t.mock.method(console, 'error', (...a) => errors.push(a.join(' ')));
+  const { DATA_FILE } = require('../src/config.js');
+
+  assert.deepEqual(store.loadSubscriptions(), []);
+  assert.equal(renames.length, 1, 'the corrupt file must be moved aside, not left to be clobbered');
+  assert.equal(renames[0][0], DATA_FILE);
+  assert.ok(/\.corrupt-\d+$/.test(renames[0][1]), 'quarantine name: ' + renames[0][1]);
+  assert.equal(errors.length, 1, 'the corruption must be logged loudly');
+});
+
+test('loadSubscriptions quarantines a parseable but non-array body', (t) => {
+  const renames = [];
+  t.mock.method(fs, 'existsSync', () => true);
+  t.mock.method(fs, 'readFileSync', () => '{"oops": true}');
+  t.mock.method(fs, 'renameSync', (from, to) => renames.push([from, to]));
+  t.mock.method(console, 'error', () => {});
+
+  assert.deepEqual(store.loadSubscriptions(), []);
+  assert.equal(renames.length, 1);
+});
+
+// --- placeholder metadata guard ------------------------------------------------
+
+test('upsertSubscription does not clobber stored metadata with display placeholders', (t) => {
+  const initialCopy = store.getSubscriptions();
+  t.after(() => store.setSubscriptions(initialCopy));
+
+  store.setSubscriptions([{
+    sessionId: '157699', cinemaId: 'VIV', movieTitle: 'Spider Man', showTime: '20:30',
+    areaCategory: '0000000009', targetCodes: [], targetDetails: {}, alerted: false, failCount: 0
+  }]);
+
+  // sessionCache miss: the handlers pass the display fallbacks
+  store.upsertSubscription('VIV', '157699', '电影', '');
+  assert.equal(store.getSubscriptions()[0].movieTitle, 'Spider Man', 'placeholder must not overwrite a stored title');
+  assert.equal(store.getSubscriptions()[0].showTime, '20:30', 'empty showTime must not overwrite a stored one');
+
+  // a real refresh still lands
+  store.upsertSubscription('VIV', '157699', 'Real Title', '21:00');
+  assert.equal(store.getSubscriptions()[0].movieTitle, 'Real Title');
+  assert.equal(store.getSubscriptions()[0].showTime, '21:00');
+});
+
+test('loadSubscriptions refuses to start when the corrupt file cannot be quarantined', (t) => {
+  t.mock.method(fs, 'existsSync', () => true);
+  t.mock.method(fs, 'readFileSync', () => 'NOT JSON{{{');
+  t.mock.method(fs, 'renameSync', () => { throw new Error('EACCES: permission denied'); });
+  const errors = [];
+  t.mock.method(console, 'error', (...a) => errors.push(a.join(' ')));
+
+  assert.throws(() => store.loadSubscriptions(), /EACCES/, 'a failed backup must stop startup, not start empty');
+});
+
+test('upsertSubscription rejects every known display placeholder, not just 电影', (t) => {
+  const initialCopy = store.getSubscriptions();
+  t.after(() => store.setSubscriptions(initialCopy));
+
+  store.setSubscriptions([{
+    sessionId: '157699', cinemaId: 'VIV', movieTitle: 'Spider Man', showTime: '20:30',
+    areaCategory: '0000000009', targetCodes: [], targetDetails: {}, alerted: false, failCount: 0
+  }]);
+  for (const ph of ['电影', '场次 157699', '未知电影']) {
+    store.upsertSubscription('VIV', '157699', ph, '');
+    assert.equal(store.getSubscriptions()[0].movieTitle, 'Spider Man', `placeholder ${ph} must not overwrite`);
+  }
 });
