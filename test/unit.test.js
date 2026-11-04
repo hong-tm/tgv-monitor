@@ -339,3 +339,23 @@ test('adding an unavailable code does not re-announce the old code, and a newly 
   assert.equal(sent.length, 2, 'B opening must alert even while A is still available');
   assert.ok(sub.alertedCodes.includes('5759'), 'B is now marked delivered');
 });
+
+test('a legacy alerted sub (no alertedCodes) does not re-announce on the first probe after upgrade', async (t) => {
+  t.mock.method(fs, 'writeFileSync', () => {});
+  t.mock.method(fs, 'renameSync', () => {});
+  t.mock.method(console, 'error', () => {});
+  const sent = [];
+  t.mock.method(axios, 'post', async (url) => {
+    if (url.includes('api.telegram.org')) { sent.push(1); return { data: { ok: true, result: {} } }; }
+    return { data: { results: { tickets: [
+      { ticketTypeCode: '5785', quantityAvailablePerOrder: 2, description: 'A', priceInCents: 600, longDescription: '' }
+    ] } } };
+  });
+  // legacy on-disk shape: alerted true, no alertedCodes field
+  monitor.setSubscriptions([{ sessionId: '90000007', cinemaId: 'VIV', movieTitle: 'M', showTime: '20:30', areaCategory: '0000000009', targetCodes: ['5785'], targetDetails: {}, alerted: true, failCount: 0 }]);
+  t.after(() => monitor.setSubscriptions([]));
+
+  await monitor.runProbeCycle();
+  assert.equal(sent.length, 0, 'a legacy already-delivered alert must not re-announce after upgrade');
+  assert.deepEqual(monitor.getSubscriptions()[0].alertedCodes, ['5785'], 'delivery state migrates to per-code on the first probe');
+});

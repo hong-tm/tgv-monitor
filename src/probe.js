@@ -45,7 +45,11 @@ async function runProbeCycle() {
         // Per-code alert state: a boolean flag shared by all codes both re-announced
         // the old code and suppressed the new one (Greptile P1). alertedCodes tracks
         // which codes have had their delivery; sub.alerted stays as the /list badge.
-        if (!Array.isArray(sub.alertedCodes)) sub.alertedCodes = [];
+        if (!Array.isArray(sub.alertedCodes)) {
+          // Legacy on-disk shape (alerted: true, no alertedCodes): treat the whole
+          // monitored set as already delivered instead of re-announcing on upgrade.
+          sub.alertedCodes = sub.alerted ? sub.targetCodes.slice() : [];
+        }
         const fresh = availableCodes.filter(c => !sub.alertedCodes.includes(c));
 
         if (fresh.length > 0) {
