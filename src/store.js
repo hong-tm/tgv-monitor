@@ -7,15 +7,32 @@ function loadSubscriptions() {
     fs.writeFileSync(DATA_FILE, JSON.stringify(defaultData, null, 2));
     return defaultData;
   }
+  let parsed = null;
   try {
-    return JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+    parsed = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
   } catch (e) {
+    parsed = null;
+  }
+  if (!Array.isArray(parsed)) {
+    // Quarantine instead of silently returning []: the next save would otherwise
+    // overwrite the only copy of the user's subscriptions with an empty list.
+    const quarantine = `${DATA_FILE}.corrupt-${Date.now()}`;
+    try {
+      fs.renameSync(DATA_FILE, quarantine);
+      console.error(`[Store] subscriptions.json 无法解析，已备份到 ${quarantine} 并从空列表启动`);
+    } catch (e2) {
+      console.error(`[Store] subscriptions.json 无法解析且备份失败: ${e2.message}`);
+    }
     return [];
   }
+  return parsed;
 }
 
 function saveSubscriptions(data) {
-  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+  // Atomic write: a crash mid-write must never truncate the live file
+  const tmp = `${DATA_FILE}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(data, null, 2));
+  fs.renameSync(tmp, DATA_FILE);
 }
 
 let subscriptions = loadSubscriptions();

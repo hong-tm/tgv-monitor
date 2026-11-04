@@ -42,6 +42,8 @@ function mockWrites(t) {
   t.mock.method(fs, 'writeFileSync', (file, data) => {
     writes.push({ file, data });
   });
+  // saveSubscriptions renames the tmp file over the live one; keep it off the real fs
+  t.mock.method(fs, 'renameSync', () => {});
   return writes;
 }
 

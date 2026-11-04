@@ -184,6 +184,7 @@ test('callTgApi pins IPv4 and gives the long-poll timeout slack', async (t) => {
 test('runProbeCycle keeps the alert pending when sendMessage fails, then delivers it once', async (t) => {
   const writes = [];
   t.mock.method(fs, 'writeFileSync', (file, data) => writes.push({ file, data }));
+  t.mock.method(fs, 'renameSync', () => {});
   t.mock.method(console, 'error', () => {});
 
   let telegramUp = false;
