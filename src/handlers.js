@@ -1,5 +1,5 @@
 const { notifyUser, callTgApi } = require('./telegram');
-const { fetchMovieByItemKey, fetchTickets } = require('./tgv-api');
+const { fetchMovieByItemKey, fetchTickets, isPromoSoldOut } = require('./tgv-api');
 const { getSubscriptions, setSubscriptions, saveSubscriptions, sessionCache, cacheSession, upsertSubscription } = require('./store');
 const { parseCallback } = require('./payload');
 const { showSessionsByMovieId, showTicketSelection, sendRealtimeDashboard, sendHelp, sendSubscriptionList } = require('./views');
@@ -273,8 +273,12 @@ async function handleCallbackQuery(cb) {
     };
     saveSubscriptions(getSubscriptions());
 
+    const soldOut = isPromoSoldOut(targetTicket);
     await callTgApi('answerCallbackQuery', { callback_query_id: cb.id, text: `已添加 ${targetTicket.description}` });
-    return await notifyUser(`✅ <b>订阅成功！</b>\n电影: <b>《${escapeHtml(movieName)}》</b>\n票种: <b>${escapeHtml(targetTicket.description)}</b> (RM${targetTicket.priceInCents / 100})`);
+    return await notifyUser(
+      `✅ <b>订阅成功！</b>\n电影: <b>《${escapeHtml(movieName)}》</b>\n票种: <b>${escapeHtml(targetTicket.description)}</b> (RM${targetTicket.priceInCents / 100})` +
+      (soldOut ? `\n⚠️ 该票种今日额度已尽，已进入监控，放票后会立刻提醒。` : '')
+    );
   }
 
   return await callTgApi('answerCallbackQuery', { callback_query_id: cb.id, text: '请重新发送电影名或链接后再试' });

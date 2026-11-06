@@ -676,3 +676,47 @@ test('dashboard splits into chunks and keeps the refresh button on the last one'
   assert.ok(sends[sends.length - 1].payload.reply_markup, 'refresh button rides the last chunk');
   for (const m of sends.slice(0, -1)) assert.equal(m.payload.reply_markup, undefined);
 });
+
+// --- sold-out promo truthfulness (live finding 2026-11-06, session 160600) ------
+// quantityAvailablePerOrder stays 20 after the daily promo limit is reached; the
+// picker used to advertise that number as if it were stock.
+
+test('the ticket picker marks a limit-reached promo as sold out instead of showing quota', async (t) => {
+  isolate(t);
+  mockWrites(t);
+  const { sent } = mockAxios(t, {
+    moviesession_gettickets: { data: { results: { tickets: [
+      { ticketTypeCode: 5785, description: 'Maybank Mastercard Single', priceInCents: 1000, quantityAvailablePerOrder: 20, descriptionAlt: 'PROMO:MBBMASTERRM10', longDescription: "RM10 ticket with Maybank Mastercard debit card\nToday's Promotion Limit Reached" },
+      { ticketTypeCode: 3988, description: 'SINGLE', priceInCents: 2000, quantityAvailablePerOrder: 20, longDescription: '' }
+    ] } } }
+  });
+
+  await handleSmartInput('157699');
+
+  const buttons = sent.flatMap((c) => c.payload.reply_markup?.inline_keyboard || []).flat();
+  assert.equal(
+    buttons.find((b) => b.callback_data === 'sub|VIV|157699|5785').text,
+    '🔥 Maybank Mastercard Single (RM10) [今日额度已尽]'
+  );
+  assert.equal(
+    buttons.find((b) => b.callback_data === 'sub|VIV|157699|3988').text,
+    '🎟️ SINGLE (RM20) [剩余:20]'
+  );
+});
+
+test('sub confirmation carries the sold-out warning for a limit-reached ticket', async (t) => {
+  isolate(t);
+  mockWrites(t);
+  const { sent } = mockAxios(t, {
+    moviesession_gettickets: { data: { results: { tickets: [
+      { ticketTypeCode: 5785, description: 'Maybank Mastercard Single', priceInCents: 1000, quantityAvailablePerOrder: 20, longDescription: "RM10 ticket with Maybank Mastercard debit card\nToday's Promotion Limit Reached" }
+    ] } } }
+  });
+  store.setSubscriptions([]);
+
+  await handleCallbackQuery({ id: '1', data: 'sub|VIV|157699|5785', message: { message_id: 2, chat: { id: TG_CHAT_ID } } });
+
+  const last = sent[sent.length - 1];
+  assert.equal(last.method, 'sendMessage');
+  assert.ok(last.payload.text.includes('今日额度已尽，已进入监控，放票后会立刻提醒'), 'the warning must ride the confirmation');
+});

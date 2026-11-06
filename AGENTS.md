@@ -92,6 +92,7 @@ Split across `src/`; `monitor.js` is a thin pm2 entry shim. It re-exports only `
 | `generateUserSessionId` / `getTodayBusinessDate` | per-request crypto session id; KL business date (en-CA, YYYY-MM-DD) | src/tgv-api.js |
 | `fetchMovieByItemKey` | itemkey/name to movie recid via the cinema catalogue (getcinemamovies + per-movie moviesession_get metadata, 10-min cache, nearest-session-date fallback for advance-selling movies) | src/tgv-api.js |
 | `fetchMovieSessions` | movieid+date+cinema to session list (time/screen/sessionId) | src/tgv-api.js |
+| `isPromoSoldOut` | the only sold-out signal for promo tickets: the daily-limit text marker in longDescription (quantityAvailablePerOrder stays >0 after the limit) | src/tgv-api.js |
 | `fetchTickets` | session to ticket types (quota, priceInCents, promo flags); throws on network errors AND on a `success:false` body (dead session, error EX-V) — the throw is what makes the 15-fail auto-removal fire | src/tgv-api.js |
 | `showSessionsByMovieId` | session picker keyboard | src/views.js |
 | `showTicketSelection` | ticket-type picker keyboard + `/suball` promo shortcut | src/views.js |

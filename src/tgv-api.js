@@ -142,6 +142,12 @@ async function fetchMovieSessions(movieId, cinemaId = 'VIV', date = null) {
   }
 }
 
+// quantityAvailablePerOrder is the per-order cap and stays >0 after the daily
+// promo limit is reached; this text marker is the only sold-out signal.
+function isPromoSoldOut(ticket) {
+  return Boolean(ticket?.longDescription && ticket.longDescription.includes("Today's Promotion Limit Reached"));
+}
+
 async function fetchTickets(cinemaId, sessionId, areaCategory = DEFAULT_AREA_CATEGORY) {
   const url = `${API_BASE}/moviesession_gettickets`;
   const payload = {
@@ -170,5 +176,6 @@ module.exports = {
   fetchMovieByItemKey,
   fetchMovieSessions,
   fetchTickets,
+  isPromoSoldOut,
   movieMetaCache
 };

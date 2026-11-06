@@ -646,3 +646,10 @@ test('a failed save is retried on a later cycle with no new state change', async
   await monitor.runProbeCycle(); // flag cleared: no further writes
   assert.equal(writes.length, 1);
 });
+
+test('the sold-out marker string lives in exactly one place', () => {
+  const hits = fs.readdirSync(SRC_DIR)
+    .filter((f) => f.endsWith('.js'))
+    .filter((f) => fs.readFileSync(path.join(SRC_DIR, f), 'utf8').includes("Today's Promotion Limit Reached"));
+  assert.deepEqual(hits, ['tgv-api.js']);
+});
