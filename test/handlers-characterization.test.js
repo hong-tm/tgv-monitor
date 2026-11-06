@@ -649,7 +649,7 @@ test('/list splits into chunks under the Telegram limit instead of sending nothi
   for (const m of sent) {
     assert.ok(m.payload.text.length <= 4096, 'every chunk must fit the Telegram limit');
   }
-  assert.ok(sent[sent.length - 1].payload.text.includes('150029') || sent.some((m) => m.payload.text.includes('150029')), 'the last sub must be present');
+  assert.ok(sent.some((m) => m.payload.text.includes('150029')), 'the last sub must be present in some chunk');
 });
 
 test('dashboard splits into chunks and keeps the refresh button on the last one', async (t) => {

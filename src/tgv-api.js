@@ -19,7 +19,8 @@ const API_BASE = 'https://api.tgv.com.my/api/boxoffice/v1';
 // the movie has sessions. One lookup walks all ~17 movies of a cinema, so the
 // metadata is cached per (movie, date) for 10 minutes.
 const META_TTL_MS = 10 * 60 * 1000;
-const movieMetaCache = new Map(); // `${movieId}_${date}` -> { expires, meta }
+const MAX_META_CACHE = 500; // same FIFO bound as store.sessionCache
+const movieMetaCache = new Map(); // `${movieId}_${cinemaId}_${date}` -> { expires, meta }
 
 // Empty catches are silent failover: a failing endpoint degrades the lookup to
 // "no match", same as the pre-split single-file behaviour.
@@ -34,13 +35,17 @@ async function fetchMovieIds(cinemaId) {
 
 // Returns null when the movie has no sessions on that date (movies: null).
 async function fetchMovieMeta(movieId, cinemaId, date) {
-  const key = `${movieId}_${date}`;
+  const key = `${movieId}_${cinemaId}_${date}`;
   const hit = movieMetaCache.get(key);
   if (hit && hit.expires > Date.now()) return hit.meta;
   try {
     const res = await axios.post(`${API_BASE}/moviesession_get`, { cinemaid: cinemaId, businessdate: date, movieid: movieId }, { headers: COMMON_HEADERS, timeout: 8000 });
     const movie = res.data?.results?.movies?.[0];
     const meta = movie?.recid ? { movieId: movie.recid, name: movie.name, itemkey: movie.itemkey } : null;
+    if (movieMetaCache.size >= MAX_META_CACHE && !movieMetaCache.has(key)) {
+      const oldest = movieMetaCache.keys().next().value;
+      if (oldest !== undefined) movieMetaCache.delete(oldest);
+    }
     movieMetaCache.set(key, { expires: Date.now() + META_TTL_MS, meta });
     return meta;
   } catch (e) {
@@ -68,22 +73,22 @@ async function fetchMovieByItemKey(itemKey, cinemaId = 'VIV') {
   const metas = await Promise.all(ids.map((id) => fetchMovieMeta(id, cinemaId, today)));
 
   // itemkey is exact (seat links and /movies/ URLs carry it); a typed name
-  // matches by substring with dashes read as spaces.
-  const match = (list) => list.find((m) => m && (
-    m.itemkey?.toLowerCase() === cleanKey ||
-    m.name?.toLowerCase().includes(cleanKey.replace(/-/g, ' '))
-  ));
+  // matches by substring with dashes read as spaces. Exact beats substring in
+  // both stages so a currently-showing title can never shadow a future
+  // movie's exact itemkey.
+  const byKey = (list) => list.find((m) => m && m.itemkey?.toLowerCase() === cleanKey);
+  const byName = (list) => list.find((m) => m && m.name?.toLowerCase().includes(cleanKey.replace(/-/g, ' ')));
+  const pick = (m) => (m ? { movieId: m.movieId, name: m.name } : null);
 
-  let found = match(metas);
-  if (found) return { movieId: found.movieId, name: found.name };
+  let found = byKey(metas) || byName(metas);
+  if (found) return pick(found);
 
   const missing = ids.filter((id, i) => !metas[i]);
   const filled = await Promise.all(missing.map(async (id) => {
     const date = await fetchNearestDate(id, cinemaId);
     return date ? fetchMovieMeta(id, cinemaId, date) : null;
   }));
-  found = match(filled);
-  return found ? { movieId: found.movieId, name: found.name } : null;
+  return pick(byKey(filled) || byName(filled));
 }
 
 async function fetchMovieSessions(movieId, cinemaId = 'VIV', date = null) {

@@ -515,3 +515,21 @@ test('fetchMovieByItemKey returns null when nothing matches', async (t) => {
   mockCatalogue(t, { ids: ['m1'], metas: { m1: { recid: 'm1', name: 'Clayface', itemkey: 'clayface' } } });
   assert.equal(await fetchMovieByItemKey('nope'), null);
 });
+
+test('movie metadata cache never leaks one cinema miss into another cinema', async (t) => {
+  const seen = [];
+  movieMetaCache.clear();
+  t.mock.method(axios, 'post', async (url, payload) => {
+    if (url.endsWith('moviesession_getcinemamovies')) return { data: { results: { movieidlist: ['m1'] } } };
+    if (url.endsWith('moviesession_get')) {
+      seen.push(payload);
+      const hasSessions = payload.cinemaid === 'VIV2';
+      return { data: hasSessions ? { results: { movies: [{ recid: 'm1', name: 'X', itemkey: 'x' }] } } : { results: { movies: null } } };
+    }
+    return { data: {} };
+  });
+
+  assert.equal(await fetchMovieByItemKey('x', 'VIV1'), null, 'no sessions at VIV1 -> miss (cached null)');
+  assert.deepEqual(await fetchMovieByItemKey('x', 'VIV2'), { movieId: 'm1', name: 'X' }, "VIV2 must not see the cached null from VIV1");
+  assert.ok(seen.every((p) => typeof p.businessdate === 'string'));
+});
