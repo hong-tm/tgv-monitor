@@ -81,9 +81,12 @@ async function showTicketSelection(cinemaId, sessionId, movieName, showTime) {
       const price = t.priceInCents / 100;
       const quota = t.quantityAvailablePerOrder;
       const isPromo = t.descriptionAlt?.includes('PROMO') || t.longDescription?.includes('Limit Reached');
+      // quantityAvailablePerOrder is the per-order cap and stays >0 after the daily
+      // promo limit is reached; only the text marker tells the sold-out truth.
+      const soldOut = t.longDescription?.includes("Today's Promotion Limit Reached");
 
       inlineKeyboard.push([{
-        text: `${isPromo ? '🔥' : '🎟️'} ${name} (RM${price}) [剩余:${quota}]`,
+        text: `${isPromo ? '🔥' : '🎟️'} ${name} (RM${price}) [${soldOut ? '今日额度已尽' : `剩余:${quota}`}]`,
         callback_data: `sub|${cinemaId}|${sessionId}|${code}`
       }]);
     }
