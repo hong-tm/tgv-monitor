@@ -8,7 +8,7 @@ A Telegram bot that watches TGV Cinemas (Malaysia) promo-ticket availability and
 - One-tap subscribe to every promo ticket type of a session (`suball`), or pick types individually
 - Availability rule: `quantityAvailablePerOrder > 0` and the daily promo limit not reached (`Today's Promotion Limit Reached`)
 - `/check` live ticket dashboard (refreshes in place via inline button), `/list`, `/del`, `/status`
-- Auto-removes offline sessions after 15 consecutive probe failures; one alert per session until it resets
+- Auto-removes offline sessions after 15 consecutive probe failures; a sold-out ticket type re-arms and alerts again when it reopens
 
 ## Architecture
 
@@ -41,7 +41,7 @@ Missing credentials fail at startup via `assertCredentials()` instead of surfaci
 
 ```bash
 npm install
-npm test                                 # 48 offline tests (axios fully stubbed)
+npm test                                 # 78 offline tests (axios fully stubbed)
 npm start                                # foreground
 pm2 startOrRestart ecosystem.config.js   # pm2 deployment (example config; adjust paths)
 ```
@@ -51,6 +51,8 @@ pm2 startOrRestart ecosystem.config.js   # pm2 deployment (example config; adjus
 - Business timezone is Asia/Kuala_Lumpur (TGV business dates follow Kuala Lumpur)
 - `src/telegram.js` pins the https agent to IPv4: api.telegram.org publishes AAAA records, and on hosts without an IPv6 route the default resolution wastes a guaranteed `ENETUNREACH` attempt
 - `subscriptions.json` is runtime state and stays untracked (gitignored)
+- TGV retired its `content/v1` movie endpoints in Nov 2026; the movie catalogue is resolved through `boxoffice/v1` (`moviesession_getcinemamovies` + `moviesession_get` + `moviesession_getnearestsessiondate`), unauthenticated
+- Ticket queries pass the area-category union `0000000009,0000000027,0000000005` so IMAX/beanie sessions list their full ticket set
 
 ## 中文速览
 
@@ -58,6 +60,6 @@ TGV 促销票监控机器人：每 60 秒轮询 TGV boxoffice 接口，监控中
 
 凭据不进仓库，解析顺序：环境变量 → 仓库外凭据文件（`$TGV_ENV_FILE`）→ 项目内 `.env`（模板见 `.env.example`，已被 gitignore）。缺凭据启动即报错。
 
-`npm test` 跑 48 个离线测试；`pm2 startOrRestart ecosystem.config.js` 部署。业务时区为吉隆坡；`subscriptions.json` 是运行时状态，不入库。
+`npm test` 跑 78 个离线测试；`pm2 startOrRestart ecosystem.config.js` 部署。业务时区为吉隆坡；`subscriptions.json` 是运行时状态，不入库。
 
 License: MIT.
