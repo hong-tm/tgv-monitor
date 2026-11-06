@@ -508,7 +508,7 @@ test('fetchMovieByItemKey falls back to the nearest session date for advance-sel
     nearest: () => ({ sessionfound: true, showtimemy: '2026-11-20T16:00:00' }),
     metaOnDate: { '2026-11-20': { m1: { recid: 'm1', name: 'Future Movie', itemkey: 'future-movie' } } }
   });
-  assert.deepEqual(await fetchMovieByItemKey('future-movie'), { movieId: 'm1', name: 'Future Movie' });
+  assert.deepEqual(await fetchMovieByItemKey('future-movie'), { movieId: 'm1', name: 'Future Movie', nearestDate: '2026-11-20' });
 });
 
 test('fetchMovieByItemKey returns null when nothing matches', async (t) => {
@@ -532,4 +532,116 @@ test('movie metadata cache never leaks one cinema miss into another cinema', asy
   assert.equal(await fetchMovieByItemKey('x', 'VIV1'), null, 'no sessions at VIV1 -> miss (cached null)');
   assert.deepEqual(await fetchMovieByItemKey('x', 'VIV2'), { movieId: 'm1', name: 'X' }, "VIV2 must not see the cached null from VIV1");
   assert.ok(seen.every((p) => typeof p.businessdate === 'string'));
+});
+
+// --- Greptile round on PR #5 ----------------------------------------------------
+
+test('an exact itemkey on an advance-selling movie beats a name match on a showing movie', async (t) => {
+  movieMetaCache.clear();
+  t.mock.method(axios, 'post', async (url, payload) => {
+    if (url.endsWith('moviesession_getcinemamovies')) return { data: { results: { movieidlist: ['today', 'future'] } } };
+    if (url.endsWith('moviesession_getnearestsessiondate')) return { data: { results: { sessionfound: true, showtimemy: '2026-11-20T16:00:00' } } };
+    if (url.endsWith('moviesession_get')) {
+      if (payload.movieid === 'today') {
+        return { data: { results: { movies: [{ recid: 'today', name: 'Future Movie Saga', itemkey: 'future-movie-saga' }] } } };
+      }
+      return payload.businessdate === '2026-11-20'
+        ? { data: { results: { movies: [{ recid: 'future', name: 'Future Movie', itemkey: 'future-movie' }] } } }
+        : { data: { results: { movies: null } } };
+    }
+    return { data: {} };
+  });
+
+  // 'future-movie' as words ("future movie") substring-matches today's
+  // "Future Movie Saga", but the future movie's exact itemkey must win.
+  assert.deepEqual(await fetchMovieByItemKey('future-movie'), { movieId: 'future', name: 'Future Movie', nearestDate: '2026-11-20' });
+});
+
+test('fetchMovieByItemKey queries the cinema it was given, not always the default', async (t) => {
+  movieMetaCache.clear();
+  const seen = [];
+  t.mock.method(axios, 'post', async (url, payload) => {
+    if (url.endsWith('moviesession_getcinemamovies')) {
+      seen.push(payload.cinemaid);
+      return { data: { results: { movieidlist: payload.cinemaid === 'OTHER' ? ['m1'] : [] } } };
+    }
+    if (url.endsWith('moviesession_get')) return { data: { results: { movies: [{ recid: 'm1', name: 'X', itemkey: 'x' }] } } };
+    return { data: {} };
+  });
+
+  assert.deepEqual(await fetchMovieByItemKey('x', 'OTHER'), { movieId: 'm1', name: 'X' });
+  assert.deepEqual(seen, ['OTHER'], 'the lookup must hit the requested cinema catalogue');
+});
+
+test('the seat-link branch resolves the movie through the link cinema', async (t) => {
+  movieMetaCache.clear();
+  const catalogueCalls = [];
+  t.mock.method(axios, 'post', async (url, payload) => {
+    if (url.includes('api.telegram.org')) return { data: { ok: true, result: { message_id: 1 } } };
+    if (url.endsWith('moviesession_getcinemamovies')) {
+      catalogueCalls.push(payload.cinemaid);
+      return { data: { results: { movieidlist: payload.cinemaid === 'OTHER' ? ['m1'] : [] } } };
+    }
+    if (url.endsWith('moviesession_get')) return { data: { results: { movies: [{ recid: 'm1', name: 'Only There', itemkey: 'only-there' }] } } };
+    return { data: {} };
+  });
+  const handlers = require('../src/handlers.js');
+
+  await handlers.handleSmartInput('https://www.tgv.com.my/select-seats/only-there/2026-11-06/OTHER/159681');
+
+  assert.deepEqual(catalogueCalls, ['OTHER'], 'the seat-link lookup must use the cinema from the URL');
+});
+
+test('a plain search for an advance-selling movie lists that future date, not today', async (t) => {
+  movieMetaCache.clear();
+  const sessionCalls = [];
+  t.mock.method(axios, 'post', async (url, payload) => {
+    if (url.includes('api.telegram.org')) return { data: { ok: true, result: { message_id: 1 } } };
+    if (url.endsWith('moviesession_getcinemamovies')) return { data: { results: { movieidlist: ['m1'] } } };
+    if (url.endsWith('moviesession_get')) {
+      sessionCalls.push(payload.businessdate);
+      return payload.businessdate === '2026-11-20'
+        ? { data: { results: { movies: [{ recid: 'm1', name: 'Future Movie', itemkey: 'future-movie' }], businessday: { cinemas: [{ movies: [{ experiences: [{ sessions: [{ sessionid: 999, screenname: 'H1', showtimemy: '2026-11-20T20:30:00' }] }] }] }] } } } }
+        : { data: { results: { movies: null } } };
+    }
+    if (url.endsWith('moviesession_getnearestsessiondate')) return { data: { results: { sessionfound: true, showtimemy: '2026-11-20T16:00:00' } } };
+    return { data: {} };
+  });
+  const handlers = require('../src/handlers.js');
+
+  await handlers.handleSmartInput('future movie');
+
+  assert.ok(sessionCalls.includes('2026-11-20'), 'the session listing must query the nearest date: ' + sessionCalls.join(','));
+});
+
+test('a failed save is retried on a later cycle with no new state change', async (t) => {
+  const writes = [];
+  let failFirst = true;
+  t.mock.method(fs, 'writeFileSync', (file, data) => {
+    if (failFirst) throw new Error('EISDIR');
+    writes.push(data);
+  });
+  t.mock.method(fs, 'renameSync', () => {});
+  t.mock.method(console, 'error', () => {});
+  let aOpen = false;
+  t.mock.method(axios, 'post', async (url) => {
+    if (url.includes('api.telegram.org')) return { data: { ok: true, result: {} } };
+    return { data: { results: { tickets: [
+      aOpen ? { ticketTypeCode: '5785', quantityAvailablePerOrder: 2, description: 'A', priceInCents: 600, longDescription: '' } : { ticketTypeCode: '5785', quantityAvailablePerOrder: 0, description: 'A', priceInCents: 600, longDescription: "Today's Promotion Limit Reached" }
+    ] } } };
+  });
+  const sub = { sessionId: '90000013', cinemaId: 'VIV', movieTitle: 'M', showTime: '20:30', areaCategory: '0000000009', targetCodes: ['5785'], targetDetails: {}, alerted: false, alertedCodes: [], failCount: 0 };
+  monitor.setSubscriptions([sub]);
+  t.after(() => monitor.setSubscriptions([]));
+
+  aOpen = true;
+  await monitor.runProbeCycle(); // alert delivered, save fails
+  assert.equal(writes.length, 0);
+
+  aOpen = false;
+  failFirst = false;
+  await monitor.runProbeCycle(); // nothing new happens; the pending save must still flush
+  assert.equal(writes.length, 1, 'the pending save retries on the next cycle');
+  await monitor.runProbeCycle(); // flag cleared: no further writes
+  assert.equal(writes.length, 1);
 });

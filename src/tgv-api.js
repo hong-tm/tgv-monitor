@@ -78,17 +78,26 @@ async function fetchMovieByItemKey(itemKey, cinemaId = 'VIV') {
   // movie's exact itemkey.
   const byKey = (list) => list.find((m) => m && m.itemkey?.toLowerCase() === cleanKey);
   const byName = (list) => list.find((m) => m && m.name?.toLowerCase().includes(cleanKey.replace(/-/g, ' ')));
-  const pick = (m) => (m ? { movieId: m.movieId, name: m.name } : null);
 
-  let found = byKey(metas) || byName(metas);
-  if (found) return pick(found);
+  const exactToday = byKey(metas);
+  if (exactToday) return { movieId: exactToday.movieId, name: exactToday.name };
 
+  // Advance-selling movies without sessions today; keep the resolved date so
+  // callers can list sessions on the day the movie actually plays.
   const missing = ids.filter((id, i) => !metas[i]);
   const filled = await Promise.all(missing.map(async (id) => {
     const date = await fetchNearestDate(id, cinemaId);
-    return date ? fetchMovieMeta(id, cinemaId, date) : null;
+    return date ? { date, meta: await fetchMovieMeta(id, cinemaId, date) } : null;
   }));
-  return pick(byKey(filled) || byName(filled));
+  const exactFuture = filled.find((f) => f && f.meta && f.meta.itemkey?.toLowerCase() === cleanKey);
+  if (exactFuture) return { movieId: exactFuture.meta.movieId, name: exactFuture.meta.name, nearestDate: exactFuture.date };
+
+  // Exact beats substring in both groups; a loose title match on a showing
+  // movie must never shadow an exact hit, so exact was checked first above.
+  const namedToday = byName(metas);
+  if (namedToday) return { movieId: namedToday.movieId, name: namedToday.name };
+  const namedFuture = filled.find((f) => f && f.meta && f.meta.name?.toLowerCase().includes(cleanKey.replace(/-/g, ' ')));
+  return namedFuture ? { movieId: namedFuture.meta.movieId, name: namedFuture.meta.name, nearestDate: namedFuture.date } : null;
 }
 
 async function fetchMovieSessions(movieId, cinemaId = 'VIV', date = null) {

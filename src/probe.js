@@ -4,6 +4,9 @@ const { getSubscriptions, saveSubscriptions } = require('./store');
 const { escapeHtml } = require('./util');
 
 let probeRunning = false;
+// A failed save leaves delivered state in memory only; without this flag the
+// next cycle would see dirty=false and never retry the write.
+let savePending = false;
 async function runProbeCycle() {
   if (probeRunning) {
     console.log('[Probe] 上一轮探测尚未结束，跳过本次触发');
@@ -101,13 +104,15 @@ async function runProbeCycle() {
       }
     }
 
-    if (dirty) {
+    if (dirty) savePending = true;
+    if (savePending) {
       try {
         saveSubscriptions(getSubscriptions());
+        savePending = false;
       } catch (e) {
         // setInterval has no catch: an escaping throw becomes an unhandled
         // rejection and kills the process. Keep the delivered state in memory;
-        // the next successful save persists it.
+        // the flag makes every later cycle retry the write.
         console.error(`[Probe] 保存订阅状态失败: ${e.message}`);
       }
     }

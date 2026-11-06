@@ -218,3 +218,16 @@ test('upsertSubscription rejects every known display placeholder, not just ç”µå½
     assert.equal(store.getSubscriptions()[0].movieTitle, 'Spider Man', `placeholder ${ph} must not overwrite`);
   }
 });
+
+test('loadSubscriptions normalizes legacy single-code areaCategory to the union', (t) => {
+  t.mock.method(fs, 'existsSync', () => true);
+  t.mock.method(fs, 'readFileSync', () => JSON.stringify([
+    { sessionId: '1', cinemaId: 'VIV', movieTitle: 'M', showTime: '20:30', areaCategory: '0000000009', targetCodes: [], targetDetails: {}, alerted: false, failCount: 0 },
+    { sessionId: '2', cinemaId: 'VIV', movieTitle: 'N', showTime: '21:00', areaCategory: '0000000009,0000000027,0000000005', targetCodes: [], targetDetails: {}, alerted: false, failCount: 0 }
+  ]));
+
+  const loaded = store.loadSubscriptions();
+
+  assert.equal(loaded[0].areaCategory, '0000000009,0000000027,0000000005', 'a legacy single code is upgraded on load');
+  assert.equal(loaded[1].areaCategory, '0000000009,0000000027,0000000005', 'the union value passes through untouched');
+});

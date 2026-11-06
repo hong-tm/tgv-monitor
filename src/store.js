@@ -27,6 +27,14 @@ function loadSubscriptions() {
     }
     return [];
   }
+  // Older subscriptions stored a single area category ('0000000009') and would
+  // keep missing IMAX/beanie tickets forever; the union is the only value this
+  // code ever writes now, so normalize legacy entries on load.
+  for (const sub of parsed) {
+    if (sub && typeof sub === 'object' && sub.areaCategory !== DEFAULT_AREA_CATEGORY) {
+      sub.areaCategory = DEFAULT_AREA_CATEGORY;
+    }
+  }
   return parsed;
 }
 
