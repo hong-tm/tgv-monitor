@@ -385,3 +385,133 @@ test('legacy upgrade marks only currently-available codes delivered; an unavaila
   await monitor.runProbeCycle();
   assert.equal(sent.length, 1, 'B opening must still alert');
 });
+
+// --- 2026-11-06 fixes -----------------------------------------------------------
+
+const { movieMetaCache, fetchMovieByItemKey, fetchTickets } = require('../src/tgv-api.js');
+
+test('fetchTickets throws on a success:false body so the probe counts it as a failure', async (t) => {
+  t.mock.method(axios, 'post', async () => ({
+    data: { success: false, error: { code: 'EX-V', message: 'Error Getting Tickets' }, results: false }
+  }));
+
+  await assert.rejects(
+    () => fetchTickets('VIV', '157699'),
+    /TGV API EX-V: Error Getting Tickets/
+  );
+});
+
+test('runProbeCycle auto-removes an expired session answering EX-V (was: empty list, failCount never grew)', async (t) => {
+  const writes = [];
+  t.mock.method(fs, 'writeFileSync', (file, data) => writes.push(data));
+  t.mock.method(fs, 'renameSync', () => {});
+  t.mock.method(console, 'error', () => {});
+  t.mock.method(axios, 'post', async (url) => {
+    if (url.includes('api.telegram.org')) return { data: { ok: true, result: {} } };
+    return { data: { success: false, error: { code: 'EX-V', message: 'Error Getting Tickets' }, results: false } };
+  });
+  const mk = () => ({ sessionId: '90000010', cinemaId: 'VIV', movieTitle: 'M', showTime: '20:30', areaCategory: '0000000009', targetCodes: ['5785'], targetDetails: {}, alerted: false, failCount: 0 });
+  monitor.setSubscriptions([mk()]);
+  t.after(() => monitor.setSubscriptions([]));
+
+  for (let i = 0; i < 15; i++) await monitor.runProbeCycle();
+
+  assert.equal(monitor.getSubscriptions().length, 0, '15 EX-V strikes must remove the dead session');
+  assert.equal(writes.length, 1, 'the removal is persisted once');
+});
+
+test('a sold-out delivered code re-arms and alerts again when it reopens (sibling still on sale)', async (t) => {
+  t.mock.method(fs, 'writeFileSync', () => {});
+  t.mock.method(fs, 'renameSync', () => {});
+  t.mock.method(console, 'error', () => {});
+  let aOpen = true;
+  const sent = [];
+  t.mock.method(axios, 'post', async (url) => {
+    if (url.includes('api.telegram.org')) { sent.push(1); return { data: { ok: true, result: {} } }; }
+    return { data: { results: { tickets: [
+      aOpen ? { ticketTypeCode: '5785', quantityAvailablePerOrder: 2, description: 'A', priceInCents: 600, longDescription: '' } : { ticketTypeCode: '5785', quantityAvailablePerOrder: 0, description: 'A', priceInCents: 600, longDescription: "Today's Promotion Limit Reached" },
+      { ticketTypeCode: '5759', quantityAvailablePerOrder: 3, description: 'B', priceInCents: 700, longDescription: '' }
+    ] } } };
+  });
+  const mk = () => ({ sessionId: '90000011', cinemaId: 'VIV', movieTitle: 'M', showTime: '20:30', areaCategory: '0000000009', targetCodes: ['5785', '5759'], targetDetails: {}, alerted: false, failCount: 0 });
+  monitor.setSubscriptions([mk()]);
+  t.after(() => monitor.setSubscriptions([]));
+
+  await monitor.runProbeCycle();
+  assert.equal(sent.length, 1, 'A+B alert once together');
+
+  aOpen = false;
+  await monitor.runProbeCycle();
+  assert.equal(sent.length, 1, 'A sold out while B is still on sale: no new announcement yet');
+
+  aOpen = true;
+  await monitor.runProbeCycle();
+  assert.equal(sent.length, 2, 'A reopening must alert again even though B stayed on sale');
+  const sub = monitor.getSubscriptions()[0];
+  assert.deepEqual(sub.alertedCodes.sort(), ['5759', '5785']);
+});
+
+test('runProbeCycle survives a failing save (was: unhandled rejection under setInterval)', async (t) => {
+  const errs = [];
+  t.mock.method(fs, 'writeFileSync', () => { throw new Error('EISDIR: illegal operation on a directory'); });
+  t.mock.method(fs, 'renameSync', () => {});
+  t.mock.method(console, 'error', (m) => errs.push(m));
+  t.mock.method(axios, 'post', async (url) => {
+    if (url.includes('api.telegram.org')) return { data: { ok: true, result: {} } };
+    return { data: { results: { tickets: [{ ticketTypeCode: '5785', quantityAvailablePerOrder: 2, description: 'A', priceInCents: 600, longDescription: '' }] } } };
+  });
+  const sub = { sessionId: '90000012', cinemaId: 'VIV', movieTitle: 'M', showTime: '20:30', areaCategory: '0000000009', targetCodes: ['5785'], targetDetails: {}, alerted: false, failCount: 0 };
+  monitor.setSubscriptions([sub]);
+  t.after(() => monitor.setSubscriptions([]));
+
+  await monitor.runProbeCycle(); // must resolve, not reject
+
+  assert.equal(sub.alerted, true, 'the alert was sent and marked delivered');
+  assert.ok(errs.some((m) => String(m).includes('保存订阅状态失败')), 'the save failure is logged loudly');
+});
+
+// --- movie lookup over the boxoffice catalogue -----------------------------------
+
+function mockCatalogue(t, { ids, metas, nearest, metaOnDate }) {
+  movieMetaCache.clear();
+  t.mock.method(axios, 'post', async (url, payload) => {
+    if (url.endsWith('moviesession_getcinemamovies')) return { data: { results: { movieidlist: ids } } };
+    if (url.endsWith('moviesession_getnearestsessiondate')) return { data: { results: nearest(payload.movieid) } };
+    if (url.endsWith('moviesession_get')) {
+      const meta = (payload.businessdate && metaOnDate?.[payload.businessdate]?.[payload.movieid]) || metas[payload.movieid];
+      return { data: meta === null ? { results: { movies: null } } : { results: { movies: [meta] } } };
+    }
+    return { data: {} };
+  });
+}
+
+test('fetchMovieByItemKey matches an exact itemkey through the cinema catalogue', async (t) => {
+  mockCatalogue(t, {
+    ids: ['m1', 'm2'],
+    metas: { m1: { recid: 'm1', name: 'Clayface', itemkey: 'clayface' }, m2: null }
+  });
+  assert.deepEqual(await fetchMovieByItemKey('Clayface'), { movieId: 'm1', name: 'Clayface' });
+});
+
+test('fetchMovieByItemKey matches a typed name with dashes read as spaces', async (t) => {
+  mockCatalogue(t, {
+    ids: ['m1'],
+    metas: { m1: { recid: 'm1', name: 'Spider Man Brand New Day', itemkey: 'spider-man-brand-new-day' } }
+  });
+  assert.deepEqual(await fetchMovieByItemKey('spider man'), { movieId: 'm1', name: 'Spider Man Brand New Day' });
+});
+
+test('fetchMovieByItemKey falls back to the nearest session date for advance-selling movies', async (t) => {
+  mockCatalogue(t, {
+    ids: ['m1'],
+    metas: { m1: null },
+    nearest: () => ({ sessionfound: true, showtimemy: '2026-11-20T16:00:00' }),
+    metaOnDate: { '2026-11-20': { m1: { recid: 'm1', name: 'Future Movie', itemkey: 'future-movie' } } }
+  });
+  assert.deepEqual(await fetchMovieByItemKey('future-movie'), { movieId: 'm1', name: 'Future Movie' });
+});
+
+test('fetchMovieByItemKey returns null when nothing matches', async (t) => {
+  mockCatalogue(t, { ids: ['m1'], metas: { m1: { recid: 'm1', name: 'Clayface', itemkey: 'clayface' } } });
+  assert.equal(await fetchMovieByItemKey('nope'), null);
+});

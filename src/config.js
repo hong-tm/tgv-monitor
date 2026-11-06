@@ -41,7 +41,11 @@ const COMMON_HEADERS = {
   'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/152.0.0.0 Safari/537.36'
 };
 
-const DEFAULT_AREA_CATEGORY = '0000000009';
+// Comma union of the area-category codes observed in production session data
+// (regular/deluxe 0000000009, IMAX 0000000027, beanie 0000000005). The API accepts
+// a comma string and returns every ticket of the session across those categories;
+// a single code returned 0 tickets for IMAX/beanie sessions.
+const DEFAULT_AREA_CATEGORY = '0000000009,0000000027,0000000005';
 const PROMO_TICKET_CODES = ['5785', '5759', '6336'];
 
 // Fail fast at startup on missing credentials, instead of surfacing a Telegram 404 later

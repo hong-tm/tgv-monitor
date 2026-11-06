@@ -37,7 +37,7 @@ async function handleSmartInput(text, defaultCinemaId = 'VIV') {
     const movieInfo = itemKey ? await fetchMovieByItemKey(itemKey) : null;
     const uuidText = movieInfo ? `\n🆔 <b>Movie UUID:</b> <code>${escapeHtml(movieInfo.movieId)}</code>` : '';
 
-    cacheSession(`${cinemaId}_${sessionId}`, { movieName, showTime: '' });
+    cacheSession(`${cinemaId}_${sessionId}`, { movieName: movieInfo?.name || movieName, showTime: '' });
 
     const markup = {
       inline_keyboard: [
@@ -156,6 +156,13 @@ async function handleCallbackQuery(cb) {
   if (!cb || !cb.data) return;
   const msgId = cb.message?.message_id;
   const parsed = parseCallback(cb.data);
+
+  // handleMessage gates commands on the chat id, but inline buttons can be
+  // pressed by any member of the chat the card landed in; apply the same gate.
+  const cbChatId = cb.message?.chat?.id;
+  if (String(cbChatId) !== String(TG_CHAT_ID)) {
+    return await callTgApi('answerCallbackQuery', { callback_query_id: cb.id, text: '无权操作' });
+  }
 
   if (!parsed) {
     return await callTgApi('answerCallbackQuery', { callback_query_id: cb.id, text: '请重新发送电影名或链接后再试' });

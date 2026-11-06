@@ -67,7 +67,7 @@ test('upsertSubscription creates a new entry in canonical key order', (t) => {
     cinemaId: 'VIV',
     movieTitle: 'Spider Man',
     showTime: '20:30',
-    areaCategory: '0000000009',
+    areaCategory: '0000000009,0000000027,0000000005',
     targetCodes: [],
     targetDetails: {},
     alerted: false,
@@ -105,7 +105,7 @@ test('upsertSubscription refreshes an existing entry without resetting state or 
     cinemaId: 'VIV',
     movieTitle: 'OLD',
     showTime: '01:00',
-    areaCategory: '0000000009',
+    areaCategory: '0000000009,0000000027,0000000005',
     targetCodes: ['5785'],
     targetDetails: {},
     alerted: true,
@@ -181,7 +181,7 @@ test('upsertSubscription does not clobber stored metadata with display placehold
 
   store.setSubscriptions([{
     sessionId: '157699', cinemaId: 'VIV', movieTitle: 'Spider Man', showTime: '20:30',
-    areaCategory: '0000000009', targetCodes: [], targetDetails: {}, alerted: false, failCount: 0
+    areaCategory: '0000000009,0000000027,0000000005', targetCodes: [], targetDetails: {}, alerted: false, failCount: 0
   }]);
 
   // sessionCache miss: the handlers pass the display fallbacks
@@ -211,7 +211,7 @@ test('upsertSubscription rejects every known display placeholder, not just 电�
 
   store.setSubscriptions([{
     sessionId: '157699', cinemaId: 'VIV', movieTitle: 'Spider Man', showTime: '20:30',
-    areaCategory: '0000000009', targetCodes: [], targetDetails: {}, alerted: false, failCount: 0
+    areaCategory: '0000000009,0000000027,0000000005', targetCodes: [], targetDetails: {}, alerted: false, failCount: 0
   }]);
   for (const ph of ['电影', '场次 157699', '未知电影']) {
     store.upsertSubscription('VIV', '157699', ph, '');

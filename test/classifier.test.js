@@ -74,17 +74,31 @@ test('case 5: truncated seat link keeps right-anchored offsets; empty cinema fal
 });
 
 // 6
-test('case 6: trailing slash yields an empty sessionId', () => {
-  assert.deepEqual(classifyInput('/select-seats/a/2026-01-01/VIV/'), {
-    kind: 'seat-link',
-    input: '/select-seats/a/2026-01-01/VIV/',
-    isExplicitUuidCmd: false,
-    sessionId: '',
-    cinemaId: 'VIV',
-    targetDate: '2026-01-01',
-    itemKey: 'a',
-    movieName: 'a'
-  });
+// Updated with the shared-link hardening: trailing slashes, ?query and #fragment
+// are stripped before the right-anchored split, and a broken percent escape is
+// kept raw instead of throwing (it used to reject with URIError).
+test('case 6: trailing slash is stripped before the right-anchored split', () => {
+  const c = classifyInput('/select-seats/a/2026-01-01/VIV/');
+  // The link is truncated (no session id): after the strip the fields shift
+  // one slot left, same as if the slash had never been typed.
+  assert.equal(c.kind, 'seat-link');
+  assert.equal(c.sessionId, 'VIV');
+  assert.equal(c.cinemaId, '2026-01-01');
+  assert.equal(c.targetDate, 'a');
+});
+test('case 6b: full trailing-slash link yields the real session id', () => {
+  const withSlash = classifyInput('https://www.tgv.com.my/select-seats/a/2026-01-01/VIV/157699/');
+  const clean = classifyInput('https://www.tgv.com.my/select-seats/a/2026-01-01/VIV/157699');
+  const { input: _a, ...restA } = withSlash;
+  const { input: _b, ...restB } = clean;
+  assert.deepEqual(restA, restB);
+});
+test('case 6c: ?query and #fragment never leak into the session id', () => {
+  const q = classifyInput('https://www.tgv.com.my/select-seats/a/2026-01-01/VIV/159681?utm_source=wa&x=1#frag');
+  assert.equal(q.sessionId, '159681');
+  assert.equal(q.cinemaId, 'VIV');
+  assert.equal(q.targetDate, '2026-01-01');
+  assert.equal(q.itemKey, 'a');
 });
 
 // 7
@@ -153,9 +167,10 @@ test('case 15: alias needs lowercase and a hyphen', () => {
 });
 
 // 16
-test('case 16: undecodable itemkey throws URIError synchronously', () => {
-  assert.throws(
-    () => classifyInput('/select-seats/%zz/2026-01-01/VIV/1'),
-    (e) => e instanceof URIError
-  );
+// Updated: safeDecode keeps a broken percent escape raw instead of throwing;
+// a hostile link must never break the polling loop that calls this.
+test('case 16: undecodable itemkey is kept raw instead of throwing', () => {
+  const r = classifyInput('/select-seats/%zz/2026-01-01/VIV/1');
+  assert.equal(r.kind, 'seat-link');
+  assert.equal(r.itemKey, '%zz');
 });
