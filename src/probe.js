@@ -1,5 +1,5 @@
 const { notifyUser } = require('./telegram');
-const { fetchTickets } = require('./tgv-api');
+const { fetchTickets, isPromoSoldOut } = require('./tgv-api');
 const { getSubscriptions, saveSubscriptions } = require('./store');
 const { escapeHtml } = require('./util');
 
@@ -36,7 +36,7 @@ async function runProbeCycle() {
           const code = String(t.ticketTypeCode);
           if (sub.targetCodes.includes(code)) {
             const quota = t.quantityAvailablePerOrder;
-            const limitReached = t.longDescription && t.longDescription.includes("Today's Promotion Limit Reached");
+            const limitReached = isPromoSoldOut(t);
 
             if (quota > 0 && !limitReached) {
               availableCodes.push(code);
