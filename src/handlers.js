@@ -28,16 +28,16 @@ async function handleSmartInput(text, defaultCinemaId = 'VIV') {
 
     if (isExplicitUuidCmd) {
       await notifyUser(`🎯 正在从选座链接解析电影别名 <code>${escapeHtml(itemKey)}</code> 与排片日期 <code>${escapeHtml(targetDate)}</code>...`);
-      const movieInfo = await fetchMovieByItemKey(itemKey);
+      const movieInfo = await fetchMovieByItemKey(itemKey, cinemaId);
       if (movieInfo) {
         return await showSessionsByMovieId(movieInfo.movieId, cinemaId, targetDate, movieInfo.name);
       }
     }
 
-    const movieInfo = itemKey ? await fetchMovieByItemKey(itemKey) : null;
+    const movieInfo = itemKey ? await fetchMovieByItemKey(itemKey, cinemaId) : null;
     const uuidText = movieInfo ? `\n🆔 <b>Movie UUID:</b> <code>${escapeHtml(movieInfo.movieId)}</code>` : '';
 
-    cacheSession(`${cinemaId}_${sessionId}`, { movieName, showTime: '' });
+    cacheSession(`${cinemaId}_${sessionId}`, { movieName: movieInfo?.name || movieName, showTime: '' });
 
     const markup = {
       inline_keyboard: [
@@ -57,9 +57,9 @@ async function handleSmartInput(text, defaultCinemaId = 'VIV') {
 
   if (c.kind === 'movie-link') {
     await notifyUser(`🔎 正在解析电影别名: <code>${escapeHtml(c.itemKey)}</code>`);
-    const movieInfo = await fetchMovieByItemKey(c.itemKey);
+    const movieInfo = await fetchMovieByItemKey(c.itemKey, defaultCinemaId);
     if (movieInfo) {
-      return await showSessionsByMovieId(movieInfo.movieId, defaultCinemaId, null, movieInfo.name);
+      return await showSessionsByMovieId(movieInfo.movieId, defaultCinemaId, movieInfo.nearestDate || null, movieInfo.name);
     }
   }
 
@@ -73,16 +73,16 @@ async function handleSmartInput(text, defaultCinemaId = 'VIV') {
 
   if (c.kind === 'alias') {
     await notifyUser(`🔎 正在根据别名检索: <code>${escapeHtml(c.input)}</code>`);
-    const movieInfo = await fetchMovieByItemKey(c.input);
+    const movieInfo = await fetchMovieByItemKey(c.input, defaultCinemaId);
     if (movieInfo) {
-      return await showSessionsByMovieId(movieInfo.movieId, defaultCinemaId, null, movieInfo.name);
+      return await showSessionsByMovieId(movieInfo.movieId, defaultCinemaId, movieInfo.nearestDate || null, movieInfo.name);
     }
   }
 
   await notifyUser(`🔎 正在搜索电影：<b>${escapeHtml(c.input)}</b>`);
-  const movieInfo = await fetchMovieByItemKey(c.input);
+  const movieInfo = await fetchMovieByItemKey(c.input, defaultCinemaId);
   if (movieInfo) {
-    return await showSessionsByMovieId(movieInfo.movieId, defaultCinemaId, null, movieInfo.name);
+    return await showSessionsByMovieId(movieInfo.movieId, defaultCinemaId, movieInfo.nearestDate || null, movieInfo.name);
   }
 
   return await notifyUser(`❌ 未能匹配到电影《${escapeHtml(c.input)}》，若该片尚未定档或放排片，TGV 系统内暂无记录。`);
@@ -156,6 +156,13 @@ async function handleCallbackQuery(cb) {
   if (!cb || !cb.data) return;
   const msgId = cb.message?.message_id;
   const parsed = parseCallback(cb.data);
+
+  // handleMessage gates commands on the chat id, but inline buttons can be
+  // pressed by any member of the chat the card landed in; apply the same gate.
+  const cbChatId = cb.message?.chat?.id;
+  if (String(cbChatId) !== String(TG_CHAT_ID)) {
+    return await callTgApi('answerCallbackQuery', { callback_query_id: cb.id, text: '无权操作' });
+  }
 
   if (!parsed) {
     return await callTgApi('answerCallbackQuery', { callback_query_id: cb.id, text: '请重新发送电影名或链接后再试' });

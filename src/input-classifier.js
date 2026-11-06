@@ -1,4 +1,6 @@
 // Input classification: routes user text to one of six intents. Pure function, no I/O. Branch order is priority.
+const { safeDecode } = require('./payload');
+
 function classifyInput(text, defaultCinemaId = 'VIV') {
   const trimmed = text.trim();
   const isExplicitUuidCmd = /^\/?uuid\b/i.test(trimmed) || /@\w+\s+uuid\b/i.test(trimmed);
@@ -10,10 +12,13 @@ function classifyInput(text, defaultCinemaId = 'VIV') {
 
   if (!input) return { kind: 'empty', input };
 
-  // Seat link: /select-seats/{itemkey}/{date}/{cinema}/{sessionid}, positions counted from the right
+  // Seat link: /select-seats/{itemkey}/{date}/{cinema}/{sessionid}, positions counted from the right.
+  // Query strings, #fragments and trailing slashes are common in shared links and
+  // used to shift every field; safeDecode keeps a broken percent escape from throwing.
   if (input.includes('/select-seats/')) {
-    const parts = input.split('/');
-    const itemKey = parts[parts.length - 4] || '';
+    const path = input.split(/[?#]/, 1)[0].replace(/\/+$/, '');
+    const parts = path.split('/');
+    const itemKey = safeDecode(parts[parts.length - 4] || '');
     return {
       kind: 'seat-link',
       input,
@@ -22,7 +27,7 @@ function classifyInput(text, defaultCinemaId = 'VIV') {
       cinemaId: parts[parts.length - 2] || defaultCinemaId,
       targetDate: parts[parts.length - 3],
       itemKey,
-      movieName: decodeURIComponent(itemKey).replace(/-/g, ' ')
+      movieName: itemKey.replace(/-/g, ' ')
     };
   }
 

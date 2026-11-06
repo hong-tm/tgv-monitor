@@ -4,6 +4,24 @@ const { sessionCache, cacheSession, getSubscriptions } = require('./store');
 const { escapeHtml } = require('./util');
 const { TG_CHAT_ID } = require('./config');
 
+// Telegram rejects any message over 4096 chars and callTgApi swallows the 400,
+// so a long dashboard or /list used to send nothing at all. Split on block
+// boundaries under the limit; the inline keyboard rides the last chunk.
+const TG_CHUNK_LIMIT = 3800;
+function chunkBlocks(blocks) {
+  const chunks = [];
+  let cur = '';
+  for (const b of blocks) {
+    if (cur && cur.length + b.length > TG_CHUNK_LIMIT) {
+      chunks.push(cur);
+      cur = '';
+    }
+    cur += b;
+  }
+  if (cur) chunks.push(cur);
+  return chunks;
+}
+
 async function showSessionsByMovieId(movieId, cinemaId = 'VIV', targetDate = null, movieNameFallback = null) {
   const date = targetDate || getTodayBusinessDate();
   await notifyUser(`🔍 正在检索电影 UUID <code>${escapeHtml(movieId)}</code> 在 <code>${escapeHtml(date)}</code> 的排片...`);
@@ -96,28 +114,29 @@ async function sendRealtimeDashboard(messageIdToEdit = null) {
   }
 
   const now = new Date().toLocaleTimeString('zh-CN', { timeZone: 'Asia/Kuala_Lumpur' });
-  let text = `📊 <b>TGV 实时票况看板</b>\n更新时间: <code>${escapeHtml(now)}</code>\n───────────────────\n`;
+  const blocks = [`📊 <b>TGV 实时票况看板</b>\n更新时间: <code>${escapeHtml(now)}</code>\n───────────────────\n`];
 
   for (const s of getSubscriptions()) {
-    text += `🎬 <b>《${escapeHtml(s.movieTitle || '未知电影')}》</b> (${escapeHtml(s.showTime || '')})\n` +
+    let block = `🎬 <b>《${escapeHtml(s.movieTitle || '未知电影')}》</b> (${escapeHtml(s.showTime || '')})\n` +
             `📍 影院: ${escapeHtml(s.cinemaId)} | 场次: <code>${escapeHtml(s.sessionId)}</code>\n`;
     try {
       const tickets = await fetchTickets(s.cinemaId, s.sessionId, s.areaCategory);
       for (const code of s.targetCodes) {
         const t = tickets.find(item => String(item.ticketTypeCode) === code);
         if (!t) {
-          text += `  • <code>${escapeHtml(code)}</code>: <i>未在售/已下架</i>\n`;
+          block += `  • <code>${escapeHtml(code)}</code>: <i>未在售/已下架</i>\n`;
           continue;
         }
         const quota = t.quantityAvailablePerOrder;
         const limitReached = t.longDescription && t.longDescription.includes("Today's Promotion Limit Reached");
         const statusIcon = (quota > 0 && !limitReached) ? '🟢 <b>有票可抢</b>' : '🔴 额度已尽';
-        text += `  • <b>${escapeHtml(t.description)}</b> (RM${t.priceInCents / 100}): ${statusIcon} [剩余: ${quota}]\n`;
+        block += `  • <b>${escapeHtml(t.description)}</b> (RM${t.priceInCents / 100}): ${statusIcon} [剩余: ${quota}]\n`;
       }
     } catch (e) {
-      text += `  • <i>请求失败: ${escapeHtml(e.message)}</i>\n`;
+      block += `  • <i>请求失败: ${escapeHtml(e.message)}</i>\n`;
     }
-    text += `───────────────────\n`;
+    block += `───────────────────\n`;
+    blocks.push(block);
   }
 
   const markup = {
@@ -126,16 +145,20 @@ async function sendRealtimeDashboard(messageIdToEdit = null) {
     ]]
   };
 
-  if (messageIdToEdit) {
-    await callTgApi('editMessageText', {
-      chat_id: TG_CHAT_ID,
-      message_id: messageIdToEdit,
-      text: text,
-      parse_mode: 'HTML',
-      reply_markup: markup
-    });
-  } else {
-    await notifyUser(text, markup);
+  const chunks = chunkBlocks(blocks);
+  for (let i = 0; i < chunks.length; i++) {
+    const withButtons = i === chunks.length - 1 ? markup : null;
+    if (messageIdToEdit && i === 0) {
+      await callTgApi('editMessageText', {
+        chat_id: TG_CHAT_ID,
+        message_id: messageIdToEdit,
+        text: chunks[i],
+        parse_mode: 'HTML',
+        ...(withButtons ? { reply_markup: withButtons } : {})
+      });
+    } else {
+      await notifyUser(chunks[i], withButtons);
+    }
   }
 }
 
@@ -156,16 +179,18 @@ async function sendSubscriptionList() {
   if (getSubscriptions().length === 0) {
     return await notifyUser('ℹ️ 当前无监控任务。直接发送电影链接或编号即可添加。');
   }
-  let reply = `📋 <b>当前监控任务列表 (${getSubscriptions().length})：</b>\n\n`;
+  const blocks = [`📋 <b>当前监控任务列表 (${getSubscriptions().length})：</b>\n\n`];
   for (const s of getSubscriptions()) {
     const codeNames = s.targetCodes.map(c => s.targetDetails?.[c]?.name || c).join('\n  • ');
-    reply += `🎬 <b>《${escapeHtml(s.movieTitle || '未知电影')}》</b>\n` +
+    blocks.push(`🎬 <b>《${escapeHtml(s.movieTitle || '未知电影')}》</b>\n` +
              `⏰ 时间: <code>${escapeHtml(s.showTime || '未记录')}</code> | 影院: ${escapeHtml(s.cinemaId)} (ID: <code>${escapeHtml(s.sessionId)}</code>)\n` +
              `🎯 监控票种:\n  • ${escapeHtml(codeNames)}\n` +
              `🔔 状态: ${s.alerted ? '🚨 已报警' : '💤 静默轮询中'}\n` +
-             `───────────────────\n`;
+             `───────────────────\n`);
   }
-  return await notifyUser(reply);
+  for (const chunk of chunkBlocks(blocks)) {
+    await notifyUser(chunk);
+  }
 }
 
 module.exports = {

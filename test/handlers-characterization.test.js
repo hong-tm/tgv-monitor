@@ -18,6 +18,7 @@ const axios = require('axios');
 const { handleSmartInput, handleMessage, handleCallbackQuery } = require('../src/handlers.js');
 const store = require('../src/store.js');
 const { TG_CHAT_ID } = require('../src/config.js');
+const { movieMetaCache } = require('../src/tgv-api.js');
 
 // The 19-char horizontal rule used by both /list and the /del callback copy.
 const SEP = '─'.repeat(19);
@@ -27,6 +28,7 @@ const SEP = '─'.repeat(19);
 // Snapshot + restore the live subscriptions array and the session cache so no
 // test leaks state into the next one.
 function isolate(t) {
+  movieMetaCache.clear();
   const subs = store.getSubscriptions().slice();
   const cache = new Map(store.sessionCache);
   t.after(() => {
@@ -187,7 +189,8 @@ test('select-seats link (no /uuid) emits the exact card, two buttons and caches 
   isolate(t);
   mockWrites(t);
   const { sent } = mockAxios(t, {
-    movie_getbyitemkey: { data: { results: { movie: { recid: 'uuid-1', name: 'Spider Man' } } } }
+    moviesession_getcinemamovies: { data: { results: { movieidlist: ['uuid-1'] } } },
+    moviesession_get: { data: { results: { movies: [{ recid: 'uuid-1', name: 'Spider Man', itemkey: 'spider-man' }] } } }
   });
 
   await handleSmartInput('https://www.tgv.com.my/select-seats/spider-man/2026-09-24/VIV/157699');
@@ -208,7 +211,8 @@ test('select-seats link (no /uuid) emits the exact card, two buttons and caches 
   assert.equal(buttons[0].callback_data, 'showall|VIV|uuid-1|2026-09-24');
   assert.equal(buttons[1].callback_data, 'quicksub|VIV|157699');
 
-  assert.deepEqual(store.sessionCache.get('VIV_157699'), { movieName: 'spider man', showTime: '' });
+  // Updated: the cache now prefers the resolved movie name over the URL slug
+  assert.deepEqual(store.sessionCache.get('VIV_157699'), { movieName: 'Spider Man', showTime: '' });
 });
 
 // --- 7 -----------------------------------------------------------------------
@@ -217,11 +221,11 @@ test('/uuid select-seats link sends the parse notice then lists sessions with a 
   isolate(t);
   mockWrites(t);
   const { sent } = mockAxios(t, {
-    movie_getbyitemkey: { data: { results: { movie: { recid: 'uuid-1', name: 'Spider Man' } } } },
+    moviesession_getcinemamovies: { data: { results: { movieidlist: ['uuid-1'] } } },
     moviesession_get: {
       data: {
         results: {
-          movies: [{ name: 'X' }],
+          movies: [{ recid: 'uuid-1', name: 'X', itemkey: 'spider-man' }],
           businessday: {
             cinemas: [
               {
@@ -260,17 +264,21 @@ test('/uuid select-seats link sends the parse notice then lists sessions with a 
 
 // --- 8 -----------------------------------------------------------------------
 
-test('malformed percent-encoding rejects with URIError before any I/O', async (t) => {
+// Updated: the classifier no longer throws on a broken percent escape; the
+// lookup simply misses and the card offers the quicksub button only.
+test('malformed percent-encoding degrades to the lookup-miss card', async (t) => {
   isolate(t);
   mockWrites(t);
-  const { sent, tgvEndpoints } = mockAxios(t);
+  const { sent, tgvEndpoints } = mockAxios(t, {
+    moviesession_getcinemamovies: { data: { results: { movieidlist: [] } } }
+  });
 
-  await assert.rejects(
-    () => handleSmartInput('https://x/select-seats/%zz/2026-01-01/VIV/1'),
-    (e) => e instanceof URIError
-  );
-  assert.equal(sent.length, 0);
-  assert.equal(tgvEndpoints.length, 0);
+  await handleSmartInput('https://x/select-seats/%zz/2026-01-01/VIV/1');
+
+  assert.equal(sent.length, 1);
+  const buttons = sent[0].payload.reply_markup.inline_keyboard.flat();
+  assert.deepEqual(buttons.map((b) => b.callback_data), ['quicksub|VIV|1']);
+  assert.ok(tgvEndpoints.includes('moviesession_getcinemamovies'));
 });
 
 // --- 9 -----------------------------------------------------------------------
@@ -291,7 +299,7 @@ test('sub callback creates the exact subscription record, persists once and repl
   });
   store.setSubscriptions([]);
 
-  await handleCallbackQuery({ id: '1', data: 'sub|VIV|157699|5785', message: { message_id: 2 } });
+  await handleCallbackQuery({ id: '1', data: 'sub|VIV|157699|5785', message: { message_id: 2, chat: { id: TG_CHAT_ID } } });
 
   assert.equal(writes.length, 1);
   const parsed = JSON.parse(writes[0].data);
@@ -301,7 +309,7 @@ test('sub callback creates the exact subscription record, persists once and repl
       cinemaId: 'VIV',
       movieTitle: '电影',
       showTime: '',
-      areaCategory: '0000000009',
+      areaCategory: '0000000009,0000000027,0000000005',
       targetCodes: ['5785'],
       targetDetails: { 5785: { name: 'Promo A', price: 6 } },
       alerted: false,
@@ -354,7 +362,7 @@ test('sub callback duplicate target: no save, alert, but in-memory refresh is le
     }
   ]);
 
-  await handleCallbackQuery({ id: '1', data: 'sub|VIV|157699|5785', message: { message_id: 2 } });
+  await handleCallbackQuery({ id: '1', data: 'sub|VIV|157699|5785', message: { message_id: 2, chat: { id: TG_CHAT_ID } } });
 
   // Early return precedes saveSubscriptions: the refresh below is NOT persisted.
   assert.equal(writes.length, 0);
@@ -386,7 +394,7 @@ test('suball picks descriptionAlt PROMO plus hardcoded 6336 and persists exactly
   });
   store.setSubscriptions([]);
 
-  await handleCallbackQuery({ id: '1', data: 'suball|VIV|157699', message: { message_id: 2 } });
+  await handleCallbackQuery({ id: '1', data: 'suball|VIV|157699', message: { message_id: 2, chat: { id: TG_CHAT_ID } } });
 
   assert.equal(writes.length, 1);
   const parsed = JSON.parse(writes[0].data);
@@ -419,7 +427,7 @@ test('del callback removes the seeded sub, saves once and replies with two exact
     }
   ]);
 
-  await handleCallbackQuery({ id: '1', data: 'del|157699', message: { message_id: 2 } });
+  await handleCallbackQuery({ id: '1', data: 'del|157699', message: { message_id: 2, chat: { id: TG_CHAT_ID } } });
 
   assert.equal(store.getSubscriptions().find((s) => s.sessionId === '157699'), undefined);
   assert.equal(writes.length, 1);
@@ -443,23 +451,23 @@ test('pick/quicksub fall back from cache to payload to defaults', async (t) => {
 
   // (a) cache wins for showTime
   store.sessionCache.set('VIV_157699', { movieName: 'Cached', showTime: '19:00' });
-  await handleCallbackQuery({ id: '1', data: 'pick|VIV|157699|20:30|Spider', message: { message_id: 2 } });
+  await handleCallbackQuery({ id: '1', data: 'pick|VIV|157699|20:30|Spider', message: { message_id: 2, chat: { id: TG_CHAT_ID } } });
   assert.equal(sent.find((c) => c.method === 'answerCallbackQuery').payload.text, '已选 19:00');
 
   // (b) empty cache -> payload showTime
   sent.length = 0;
   store.sessionCache.delete('VIV_157699');
-  await handleCallbackQuery({ id: '1', data: 'pick|VIV|157699|20:30|Spider', message: { message_id: 2 } });
+  await handleCallbackQuery({ id: '1', data: 'pick|VIV|157699|20:30|Spider', message: { message_id: 2, chat: { id: TG_CHAT_ID } } });
   assert.equal(sent.find((c) => c.method === 'answerCallbackQuery').payload.text, '已选 20:30');
 
   // (c) quicksub legacy name argument
   sent.length = 0;
-  await handleCallbackQuery({ id: '1', data: 'quicksub|VIV|157699|Legacy', message: { message_id: 2 } });
+  await handleCallbackQuery({ id: '1', data: 'quicksub|VIV|157699|Legacy', message: { message_id: 2, chat: { id: TG_CHAT_ID } } });
   assert.ok(sent.some((c) => c.method === 'sendMessage' && c.payload.text.includes('Legacy')));
 
   // (d) quicksub with no legacy arg -> falls back to the default movie name
   sent.length = 0;
-  await handleCallbackQuery({ id: '1', data: 'quicksub|VIV|157699', message: { message_id: 2 } });
+  await handleCallbackQuery({ id: '1', data: 'quicksub|VIV|157699', message: { message_id: 2, chat: { id: TG_CHAT_ID } } });
   assert.ok(sent.some((c) => c.method === 'sendMessage' && c.payload.text.includes('电影')));
 });
 
@@ -471,12 +479,12 @@ test('unknown action and unparseable payload both fall back to the retry hint', 
   const { sent } = mockAxios(t);
 
   // parseCallback succeeds but no branch matches -> final return
-  await handleCallbackQuery({ id: '1', data: 'foo|bar', message: { message_id: 2 } });
+  await handleCallbackQuery({ id: '1', data: 'foo|bar', message: { message_id: 2, chat: { id: TG_CHAT_ID } } });
   assert.equal(lastSend(sent).payload.text, '请重新发送电影名或链接后再试');
 
   // parseCallback returns null -> early return
   sent.length = 0;
-  await handleCallbackQuery({ id: '1', data: 'garbage', message: { message_id: 2 } });
+  await handleCallbackQuery({ id: '1', data: 'garbage', message: { message_id: 2, chat: { id: TG_CHAT_ID } } });
   assert.equal(lastSend(sent).payload.text, '请重新发送电影名或链接后再试');
 });
 
@@ -550,7 +558,7 @@ for (const data of ['sub|VIV|157699|5785', 'suball|VIV|157699']) {
     });
     store.setSubscriptions([]);
 
-    await handleCallbackQuery({ id: '1', data, message: { message_id: 2 } });
+    await handleCallbackQuery({ id: '1', data, message: { message_id: 2, chat: { id: TG_CHAT_ID } } });
 
     assert.equal(writes.length, 0);
     assert.equal(store.getSubscriptions().length, 0);
@@ -573,7 +581,7 @@ test('adding a ticket code to an already-alerted sub lets the new code alert (pe
   });
   store.setSubscriptions([{ sessionId: '157699', cinemaId: 'VIV', movieTitle: 'M', showTime: '20:30', areaCategory: '0000000009', targetCodes: ['5785'], targetDetails: {}, alerted: true, alertedCodes: ['5785'], failCount: 0 }]);
 
-  await handleCallbackQuery({ id: '1', data: 'sub|VIV|157699|5759', message: { message_id: 2 } });
+  await handleCallbackQuery({ id: '1', data: 'sub|VIV|157699|5759', message: { message_id: 2, chat: { id: TG_CHAT_ID } } });
 
   assert.equal(writes.length, 1);
   const saved = JSON.parse(writes[0].data)[0];
@@ -592,10 +600,79 @@ test('/del buttons carry the cinema and the callback deletes only that (cinema, 
   const buttons = lastSend(sent).payload.reply_markup.inline_keyboard.map((row) => row[0].callback_data);
   assert.deepEqual(buttons, ['del|VIV|157699', 'del|OTHER|157699']);
 
-  await handleCallbackQuery({ id: '1', data: 'del|OTHER|157699', message: { message_id: 2 } });
+  await handleCallbackQuery({ id: '1', data: 'del|OTHER|157699', message: { message_id: 2, chat: { id: TG_CHAT_ID } } });
 
   assert.deepEqual(store.getSubscriptions().map((s) => s.cinemaId), ['VIV']);
   assert.equal(writes.length, 1);
   const answer = sent.find((c) => c.method === 'answerCallbackQuery');
   assert.equal(answer.payload.text, '已移除《B》');
+});
+
+// --- callback gate (2026-11-06 fix) --------------------------------------------
+
+test('a callback from a chat that is not TG_CHAT_ID is refused without side effects', async (t) => {
+  isolate(t);
+  const writes = mockWrites(t);
+  const { sent } = mockAxios(t);
+  const otherChatId = String(TG_CHAT_ID) === '999' ? '998' : '999';
+  store.setSubscriptions([{ sessionId: '555', cinemaId: 'VIV', movieTitle: 'A', showTime: '', areaCategory: '0000000009', targetCodes: ['5785'], targetDetails: {}, alerted: false, failCount: 0 }]);
+
+  await handleCallbackQuery({ id: '1', data: 'del|VIV|555', from: { id: 7 }, message: { message_id: 2, chat: { id: otherChatId } } });
+
+  assert.equal(store.getSubscriptions().length, 1, 'a foreign chat must not delete subscriptions');
+  assert.equal(writes.length, 0);
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].method, 'answerCallbackQuery');
+  assert.equal(sent[0].payload.text, '无权操作');
+});
+
+// --- message chunking (2026-11-06 fix) -------------------------------------------
+
+test('/list splits into chunks under the Telegram limit instead of sending nothing', async (t) => {
+  isolate(t);
+  mockWrites(t);
+  const { sent } = mockAxios(t);
+  const subs = [];
+  for (let i = 0; i < 30; i++) {
+    subs.push({
+      sessionId: String(150000 + i), cinemaId: 'VIV', movieTitle: 'Ramayana: Rise Of A Legend (Tamil)', showTime: '20:30',
+      areaCategory: '0000000009', targetCodes: ['5785', '5759', '6336'],
+      targetDetails: { 5785: { name: 'Promo Ticket Alpha' }, 5759: { name: 'Promo Ticket Beta' }, 6336: { name: 'Promo Ticket Gamma' } },
+      alerted: false, failCount: 0
+    });
+  }
+  store.setSubscriptions(subs);
+
+  await handleMessage({ text: '/list', chat: { id: TG_CHAT_ID } });
+
+  assert.ok(sent.length > 1, '30 subs must produce more than one message');
+  for (const m of sent) {
+    assert.ok(m.payload.text.length <= 4096, 'every chunk must fit the Telegram limit');
+  }
+  assert.ok(sent.some((m) => m.payload.text.includes('150029')), 'the last sub must be present in some chunk');
+});
+
+test('dashboard splits into chunks and keeps the refresh button on the last one', async (t) => {
+  isolate(t);
+  mockWrites(t);
+  const { sent } = mockAxios(t, {
+    moviesession_gettickets: { data: { results: { tickets: [
+      { ticketTypeCode: 5785, description: 'Promo Alpha', priceInCents: 600, quantityAvailablePerOrder: 0 },
+      { ticketTypeCode: 5759, description: 'Promo Beta', priceInCents: 700, quantityAvailablePerOrder: 0 },
+      { ticketTypeCode: 6336, description: 'Promo Gamma', priceInCents: 800, quantityAvailablePerOrder: 0 }
+    ] } } }
+  });
+  const subs = [];
+  for (let i = 0; i < 30; i++) {
+    subs.push({ sessionId: String(150000 + i), cinemaId: 'VIV', movieTitle: 'Ramayana: Rise Of A Legend (Tamil)', showTime: '20:30', areaCategory: '0000000009', targetCodes: ['5785', '5759', '6336'], targetDetails: {}, alerted: false, failCount: 0 });
+  }
+  store.setSubscriptions(subs);
+
+  await handleMessage({ text: '/check', chat: { id: TG_CHAT_ID } });
+
+  const sends = sent.filter((m) => m.method === 'sendMessage');
+  assert.ok(sends.length > 1, '30 subs must produce more than one dashboard message');
+  for (const m of sends) assert.ok(m.payload.text.length <= 4096);
+  assert.ok(sends[sends.length - 1].payload.reply_markup, 'refresh button rides the last chunk');
+  for (const m of sends.slice(0, -1)) assert.equal(m.payload.reply_markup, undefined);
 });

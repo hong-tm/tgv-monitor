@@ -4,6 +4,9 @@ const { getSubscriptions, saveSubscriptions } = require('./store');
 const { escapeHtml } = require('./util');
 
 let probeRunning = false;
+// A failed save leaves delivered state in memory only; without this flag the
+// next cycle would see dirty=false and never retry the write.
+let savePending = false;
 async function runProbeCycle() {
   if (probeRunning) {
     console.log('[Probe] 上一轮探测尚未结束，跳过本次触发');
@@ -51,6 +54,13 @@ async function runProbeCycle() {
           // those, so a not-yet-opened code still alerts when it opens.
           sub.alertedCodes = sub.alerted ? availableCodes.slice() : [];
         }
+        // Re-arm per code: a delivered code that is no longer on sale must alert
+        // again when it reopens, even while a sibling code is still on sale.
+        const armed = sub.alertedCodes.filter((c) => availableCodes.includes(c));
+        if (armed.length !== sub.alertedCodes.length) {
+          sub.alertedCodes = armed;
+          dirty = true;
+        }
         const fresh = availableCodes.filter(c => !sub.alertedCodes.includes(c));
 
         if (fresh.length > 0) {
@@ -70,17 +80,10 @@ async function runProbeCycle() {
               sub.alerted = true;
               dirty = true;
             }
-        } else if (availableCodes.length === 0) {
-          // Nothing on sale any more: re-arm both the per-code state and the /list badge.
-          // (availableCodes non-empty but all delivered keeps the delivered state.)
-          if (sub.alerted) {
-            sub.alerted = false;
-            dirty = true;
-          }
-          if (sub.alertedCodes.length > 0) {
-            sub.alertedCodes = [];
-            dirty = true;
-          }
+        } else if (availableCodes.length === 0 && sub.alerted) {
+          // Nothing on sale any more: reset the /list badge.
+          sub.alerted = false;
+          dirty = true;
         }
 
       } catch (err) {
@@ -101,8 +104,17 @@ async function runProbeCycle() {
       }
     }
 
-    if (dirty) {
-      saveSubscriptions(getSubscriptions());
+    if (dirty) savePending = true;
+    if (savePending) {
+      try {
+        saveSubscriptions(getSubscriptions());
+        savePending = false;
+      } catch (e) {
+        // setInterval has no catch: an escaping throw becomes an unhandled
+        // rejection and kills the process. Keep the delivered state in memory;
+        // the flag makes every later cycle retry the write.
+        console.error(`[Probe] 保存订阅状态失败: ${e.message}`);
+      }
     }
   } finally {
     probeRunning = false;

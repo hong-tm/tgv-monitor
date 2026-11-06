@@ -8,7 +8,7 @@ Node.js (CommonJS) Telegram bot that monitors ticket availability for TGV,
 a Malaysian cinema chain (tgv.com.my). Polls the TGV boxoffice API every 60s and
 alerts the owner via Telegram when monitored promo tickets gain sellable quota.
 Stack: axios + raw Telegram Bot API over long-polling.
-Was a single 826-line file; split into `src/` modules in step 2 (`monitor.js` is now a 20-line entry shim; `src/` now holds 11 modules, 1056 lines; repo total 2472 lines).
+Was a single 826-line file; split into `src/` modules in step 2 (`monitor.js` is now a 20-line entry shim; `src/` now holds 11 modules, 1165 lines; repo total 2849 lines).
 
 ## CREDENTIALS
 Bot token and chat id are NOT in the repo. `src/config.js` resolves them in this order:
@@ -24,7 +24,7 @@ Live deployment (since 2026-09-25): the project-local `.env` is the active crede
 ```
 tgv-monitor/
 ├── monitor.js            # 20 lines: pm2 entry shim only; require.main guard + 6 re-exports
-├── src/                  # 11 modules, 1056 lines
+├── src/                  # 11 modules, 1165 lines
 │   ├── config.js         # 66 lines: TG_BOT_TOKEN, TG_CHAT_ID, CHECK_INTERVAL_MS, DATA_FILE, COMMON_HEADERS, DEFAULT_AREA_CATEGORY, PROMO_TICKET_CODES, assertCredentials
 │   ├── util.js           # 12 lines: escapeHtml
 │   ├── payload.js        # 50 lines: safeDecode, parseCallback
@@ -36,7 +36,7 @@ tgv-monitor/
 │   ├── handlers.js       # 282 lines: command/action router; handleSmartInput, handleMessage, handleCallbackQuery
 │   ├── probe.js          # 115 lines: probeRunning, runProbeCycle
 │   └── app.js            # 62 lines: lastUpdateId, skipBacklog, startTelegramPolling, main
-├── test/                 # 5 files, 1396 lines; node:test, offline (axios stubbed), 63 tests
+├── test/                 # 5 files, 1664 lines; node:test, offline (axios stubbed), 78 tests
 │   ├── child-process.test.js              # 73 lines: CLI / entry-shim smoke tests
 │   ├── classifier.test.js                 # 161 lines: classifyInput unit tests
 │   ├── handlers-characterization.test.js  # 596 lines: handler integration / characterization tests
@@ -50,7 +50,7 @@ tgv-monitor/
 ├── subscriptions.json    # untracked runtime state (gitignored; mutated live by bot)
 └── .omo/                 # agent session state, not project code
 ```
-Dependency direction (acyclic): `config`/`util`/`payload`/`input-classifier` → none; `telegram`/`tgv-api`/`store` → config (`store` imports `DATA_FILE` and `DEFAULT_AREA_CATEGORY`);
+Dependency direction (acyclic): `config`/`util`/`payload` → none; `input-classifier` → payload (safeDecode only); `telegram`/`tgv-api`/`store` → config (`store` imports `DATA_FILE` and `DEFAULT_AREA_CATEGORY`);
 `views` → telegram, tgv-api, store, util, config; `handlers` → telegram, tgv-api, store, payload, views, util, config, input-classifier;
 `probe` → telegram, tgv-api, store, util; `app` → telegram, handlers, probe, config;
 `monitor.js` (shim) → app, probe, util, payload, store.
@@ -67,7 +67,7 @@ Dependency direction (acyclic): `config`/`util`/`payload`/`input-classifier` →
 | Persistence | `loadSubscriptions` / `saveSubscriptions` | src/store.js; synchronous fs, single state file |
 | Bot command registration | `setupBotCommands` | src/telegram.js |
 | Telegram transport | `callTgApi` / `notifyUser` | src/telegram.js; raw API, HTML parse_mode |
-| Tests | `test/` | `npm test`; offline, axios stubbed, 65 tests |
+| Tests | `test/` | `npm test`; offline, axios stubbed, 78 tests |
 | Process / ops | `ecosystem.config.js` | pm2 app name and script must match the live process |
 ## CODE MAP
 Split across `src/`; `monitor.js` is a thin pm2 entry shim. It re-exports only `escapeHtml parseCallback runProbeCycle startTelegramPolling getSubscriptions setSubscriptions`, so `probeRunning`, `lastUpdateId`, `safeDecode`, `loadSubscriptions`, `saveSubscriptions`, `sessionCache`, `cacheSession`, `upsertSubscription`, `classifyInput`, `sendHelp`, `sendSubscriptionList` and `setupBotCommands` are reachable only through their own module.
@@ -78,10 +78,10 @@ Split across `src/`; `monitor.js` is a thin pm2 entry shim. It re-exports only `
 | `DATA_FILE` | subscriptions.json path | src/config.js |
 | `assertCredentials` | startup guard, throws when a credential is missing | src/config.js |
 | `CHECK_INTERVAL_MS` `COMMON_HEADERS` | 60s probe cadence; spoofed browser headers for api.tgv.com.my | src/config.js |
-| `DEFAULT_AREA_CATEGORY` `PROMO_TICKET_CODES` | hardcoded TGV domain constants moved to config | src/config.js |
+| `DEFAULT_AREA_CATEGORY` `PROMO_TICKET_CODES` | hardcoded TGV domain constants moved to config; DEFAULT_AREA_CATEGORY is the comma union `0000000009,0000000027,0000000005` (regular/deluxe, IMAX, beanie) accepted by moviesession_gettickets | src/config.js |
 | `escapeHtml` | HTML-escape dynamic content before Telegram HTML messages | src/util.js |
 | `safeDecode` / `parseCallback` | callback_data decode; parses the `|` separator plus legacy underscore format | src/payload.js |
-| `classifyInput` | pure text→intent classifier (returns `empty|seat-link|movie-link|uuid|session|alias|search`), no I/O | src/input-classifier.js |
+| `classifyInput` | pure text→intent classifier (returns `empty|seat-link|movie-link|uuid|session|alias|search`), no I/O; seat-link parsing strips query/fragment/trailing slashes and never throws on bad percent escapes (safeDecode from payload) | src/input-classifier.js |
 | `callTgApi` | axios POST to api.telegram.org, swallows errors, returns null | src/telegram.js |
 | `notifyUser` | sendMessage with HTML + optional reply_markup | src/telegram.js |
 | `setupBotCommands` | setMyCommands for the 5 slash commands | src/telegram.js |
@@ -90,16 +90,16 @@ Split across `src/`; `monitor.js` is a thin pm2 entry shim. It re-exports only `
 | `sessionCache` / `cacheSession` | Map `${cinemaId}_${sessionId}` to {movieName, showTime}; FIFO cap 500, prefer cacheSession | src/store.js |
 | `upsertSubscription` | find-or-create a sub keyed by `(sessionId, cinemaId)`; mutates memory ONLY, never persists (callers own `saveSubscriptions`) | src/store.js |
 | `generateUserSessionId` / `getTodayBusinessDate` | per-request crypto session id; KL business date (en-CA, YYYY-MM-DD) | src/tgv-api.js |
-| `fetchMovieByItemKey` | itemkey to movie recid; tries 2 endpoints, falls back to now-showing list | src/tgv-api.js |
+| `fetchMovieByItemKey` | itemkey/name to movie recid via the cinema catalogue (getcinemamovies + per-movie moviesession_get metadata, 10-min cache, nearest-session-date fallback for advance-selling movies) | src/tgv-api.js |
 | `fetchMovieSessions` | movieid+date+cinema to session list (time/screen/sessionId) | src/tgv-api.js |
-| `fetchTickets` | session to ticket types (quota, priceInCents, promo flags); throws, no try/catch | src/tgv-api.js |
+| `fetchTickets` | session to ticket types (quota, priceInCents, promo flags); throws on network errors AND on a `success:false` body (dead session, error EX-V) — the throw is what makes the 15-fail auto-removal fire | src/tgv-api.js |
 | `showSessionsByMovieId` | session picker keyboard | src/views.js |
 | `showTicketSelection` | ticket-type picker keyboard + `/suball` promo shortcut | src/views.js |
 | `sendRealtimeDashboard` | per-subscription ticket status board, editable + refresh button | src/views.js |
 | `sendHelp` / `sendSubscriptionList` | the `/start` help copy and `/list` rendering, moved out of handlers | src/views.js |
 | `handleSmartInput` | command-side dispatcher; real text parsing now lives in `classifyInput` | src/handlers.js |
 | `handleMessage` | chat-id-gated command dispatch, falls back to smart input | src/handlers.js |
-| `handleCallbackQuery` | all inline button routing | src/handlers.js |
+| `handleCallbackQuery` | all inline button routing; gated on the owner chat id like handleMessage | src/handlers.js |
 | `probeRunning` / `runProbeCycle` | reentrancy guard; per-sub probe, alerts on quota>0 and !LimitReached, auto-remove at 15 fails | src/probe.js |
 | `lastUpdateId` / `skipBacklog` | long-poll offset cursor; boot-time backlog drain via getUpdates offset:-1 | src/app.js |
 | `startTelegramPolling` | infinite getUpdates long-poll loop; fire-and-forget | src/app.js |
@@ -130,12 +130,16 @@ Split across `src/`; `monitor.js` is a thin pm2 entry shim. It re-exports only `
 node monitor.js              # run the bot in foreground (long-running)
 npm start                    # same as node monitor.js
 npm install                  # restore deps (axios only)
-npm test                     # node --test; test/ offline, axios stubbed, 65 tests
+npm test                     # node --test; test/ offline, axios stubbed, 78 tests
 pm2 startOrRestart ecosystem.config.js   # (re)start under pm2
 ```
 No build, lint, or format tooling exists.
 
 ## NOTES
+- TGV retired its `api/content/v1` movie endpoints (movie_getbyitemkey / movie_getdetails / movies_getnowshowing all 404 as of Nov 2026). The catalogue now resolves through `boxoffice/v1`: `moviesession_getcinemamovies` returns a cinema's movieidlist, `moviesession_get` returns the movie record (recid/itemkey/name) for any date the movie has sessions, `moviesession_getnearestsessiondate` finds the date for advance-selling movies. All unauthenticated.
+- `moviesession_gettickets` answers HTTP 200 with `success:false` (code EX-V) for a dead/expired session; `fetchTickets` throws on that body on purpose — returning [] would reset failCount and the 15-fail auto-removal would never fire.
+- Ticket queries pass the area-category union `0000000009,0000000027,0000000005`; a single code returns 0 tickets for IMAX/beanie sessions.
+- `/list` and `/check` split into chunks under the 4096-char Telegram limit (refresh button rides the last chunk); `handleCallbackQuery` is gated on the owner chat id like `handleMessage`.
 - Line numbers are deliberately omitted: they rot on every edit, so grep the symbol name instead.
 - TGV business day is Asia/Kuala_Lumpur; date math uses `en-CA` locale strings (YYYY-MM-DD).
 - `subscriptions.json` is live runtime state. Entries carry `alerted`/`failCount`, and load happens once at startup, so do not hand-edit while the bot runs. Saves are atomic (tmp + rename); a corrupt file is quarantined as `subscriptions.json.corrupt-<ts>` at boot instead of being clobbered by the next save.
