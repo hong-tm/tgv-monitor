@@ -638,9 +638,10 @@ test('a failed save is retried on a later cycle with no new state change', async
   await monitor.runProbeCycle(); // alert delivered, save fails
   assert.equal(writes.length, 0);
 
-  aOpen = false;
+  // State stays identical this cycle (aOpen still true, already delivered):
+  // only the pending flag may force the save.
   failFirst = false;
-  await monitor.runProbeCycle(); // nothing new happens; the pending save must still flush
+  await monitor.runProbeCycle();
   assert.equal(writes.length, 1, 'the pending save retries on the next cycle');
   await monitor.runProbeCycle(); // flag cleared: no further writes
   assert.equal(writes.length, 1);
