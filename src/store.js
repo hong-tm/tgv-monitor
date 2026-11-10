@@ -65,6 +65,27 @@ function cacheSession(key, value) {
   sessionCache.set(key, value);
 }
 
+// Persist the live array without throwing. A failed write (disk full, EACCES)
+// keeps the state in memory and raises the flag so the next probe cycle
+// retries; an escaping throw would kill the probe interval or drop the
+// callback that triggered the save.
+let savePending = false;
+function persistSubscriptions() {
+  try {
+    saveSubscriptions(subscriptions);
+    savePending = false;
+    return true;
+  } catch (e) {
+    savePending = true;
+    console.error(`[Store] 保存订阅状态失败: ${e.message}`);
+    return false;
+  }
+}
+
+function hasPendingSave() {
+  return savePending;
+}
+
 function getSubscriptions() {
   return subscriptions;
 }
@@ -101,6 +122,8 @@ function upsertSubscription(cinemaId, sessionId, movieName, showTime) {
 module.exports = {
   loadSubscriptions,
   saveSubscriptions,
+  persistSubscriptions,
+  hasPendingSave,
   getSubscriptions,
   setSubscriptions,
   sessionCache,

@@ -73,11 +73,16 @@ async function fetchMovieByItemKey(itemKey, cinemaId = 'VIV') {
   const metas = await Promise.all(ids.map((id) => fetchMovieMeta(id, cinemaId, today)));
 
   // itemkey is exact (seat links and /movies/ URLs carry it); a typed name
-  // matches by substring with dashes read as spaces. Exact beats substring in
-  // both stages so a currently-showing title can never shadow a future
-  // movie's exact itemkey.
+  // matches by substring with punctuation and spaces read alike on BOTH
+  // sides, so a slug fragment ("spider-man-brand") and the typed "Spider-Man"
+  // both find "Spider-Man: Brand New Day".
+  // Exact beats substring in both stages so a currently-showing title can
+  // never shadow a future movie's exact itemkey.
+  const loose = (s) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+  const nameKey = loose(cleanKey);
+  const nameHit = (m) => Boolean(m && nameKey && m.name && loose(m.name).includes(nameKey));
   const byKey = (list) => list.find((m) => m && m.itemkey?.toLowerCase() === cleanKey);
-  const byName = (list) => list.find((m) => m && m.name?.toLowerCase().includes(cleanKey.replace(/-/g, ' ')));
+  const byName = (list) => list.find(nameHit);
 
   const exactToday = byKey(metas);
   if (exactToday) return { movieId: exactToday.movieId, name: exactToday.name };
@@ -96,7 +101,7 @@ async function fetchMovieByItemKey(itemKey, cinemaId = 'VIV') {
   // movie must never shadow an exact hit, so exact was checked first above.
   const namedToday = byName(metas);
   if (namedToday) return { movieId: namedToday.movieId, name: namedToday.name };
-  const namedFuture = filled.find((f) => f && f.meta && f.meta.name?.toLowerCase().includes(cleanKey.replace(/-/g, ' ')));
+  const namedFuture = filled.find((f) => f && nameHit(f.meta));
   return namedFuture ? { movieId: namedFuture.meta.movieId, name: namedFuture.meta.name, nearestDate: namedFuture.date } : null;
 }
 

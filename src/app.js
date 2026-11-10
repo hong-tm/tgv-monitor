@@ -39,6 +39,8 @@ async function startTelegramPolling() {
         await new Promise(r => setTimeout(r, 3000));
       }
     } catch (err) {
+      // A throwing handler used to vanish here without a trace
+      console.error(`[Polling] 处理更新失败: ${err.message}`);
       await new Promise(r => setTimeout(r, 3000));
     }
   }

@@ -1,12 +1,9 @@
 const { notifyUser } = require('./telegram');
 const { fetchTickets, isPromoSoldOut } = require('./tgv-api');
-const { getSubscriptions, saveSubscriptions } = require('./store');
+const { getSubscriptions, persistSubscriptions, hasPendingSave } = require('./store');
 const { escapeHtml } = require('./util');
 
 let probeRunning = false;
-// A failed save leaves delivered state in memory only; without this flag the
-// next cycle would see dirty=false and never retry the write.
-let savePending = false;
 async function runProbeCycle() {
   if (probeRunning) {
     console.log('[Probe] 上一轮探测尚未结束，跳过本次触发');
@@ -87,6 +84,9 @@ async function runProbeCycle() {
         }
 
       } catch (err) {
+        // Same guard as the success path: a sub deleted while the fetch was in
+        // flight must not earn strikes or a removal notice.
+        if (!getSubscriptions().includes(sub)) continue;
         sub.failCount = (sub.failCount || 0) + 1;
         console.error(`[Probe] 探测失败 (${sub.cinemaId}/${sub.sessionId}) failCount=${sub.failCount}: ${err.message}`);
         if (sub.failCount >= 15) {
@@ -104,18 +104,9 @@ async function runProbeCycle() {
       }
     }
 
-    if (dirty) savePending = true;
-    if (savePending) {
-      try {
-        saveSubscriptions(getSubscriptions());
-        savePending = false;
-      } catch (e) {
-        // setInterval has no catch: an escaping throw becomes an unhandled
-        // rejection and kills the process. Keep the delivered state in memory;
-        // the flag makes every later cycle retry the write.
-        console.error(`[Probe] 保存订阅状态失败: ${e.message}`);
-      }
-    }
+    // Also retries a save that failed earlier (here or in a handler): without
+    // the pending check a clean cycle would never write the in-memory state.
+    if (dirty || hasPendingSave()) persistSubscriptions();
   } finally {
     probeRunning = false;
   }

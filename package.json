@@ -5,7 +5,8 @@
   "main": "monitor.js",
   "scripts": {
     "start": "node monitor.js",
-    "test": "node --test"
+    "test": "node --test",
+    "smoke:live": "node scripts/live-smoke.js"
   },
   "keywords": [],
   "author": "",

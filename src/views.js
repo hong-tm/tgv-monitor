@@ -130,8 +130,10 @@ async function sendRealtimeDashboard(messageIdToEdit = null) {
         }
         const quota = t.quantityAvailablePerOrder;
         const limitReached = isPromoSoldOut(t);
-        const statusIcon = (quota > 0 && !limitReached) ? '🟢 <b>有票可抢</b>' : '🔴 额度已尽';
-        block += `  • <b>${escapeHtml(t.description)}</b> (RM${t.priceInCents / 100}): ${statusIcon} [剩余: ${quota}]\n`;
+        // quota is the per-order cap and stays >0 after the daily limit; only show it while on sale
+        const onSale = quota > 0 && !limitReached;
+        const status = onSale ? `🟢 <b>有票可抢</b> [剩余: ${quota}]` : '🔴 额度已尽';
+        block += `  • <b>${escapeHtml(t.description)}</b> (RM${t.priceInCents / 100}): ${status}\n`;
       }
     } catch (e) {
       block += `  • <i>请求失败: ${escapeHtml(e.message)}</i>\n`;
