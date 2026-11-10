@@ -91,7 +91,7 @@ Split across `src/`; `monitor.js` is a thin pm2 entry shim. It re-exports only `
 | `persistSubscriptions` / `hasPendingSave` | the save every caller outside store.js uses: never throws, returns false and raises the retry flag on a failed write; `runProbeCycle` retries while the flag is up | src/store.js |
 | `getSubscriptions` / `setSubscriptions` | the ONLY accessors to the live `subscriptions` array | src/store.js |
 | `sessionCache` / `cacheSession` | Map `${cinemaId}_${sessionId}` to {movieName, showTime}; FIFO cap 500, prefer cacheSession | src/store.js |
-| `upsertSubscription` | find-or-create a sub keyed by `(sessionId, cinemaId)`; mutates memory ONLY, never persists (callers own `saveSubscriptions`) | src/store.js |
+| `upsertSubscription` | find-or-create a sub keyed by `(sessionId, cinemaId)`; mutates memory ONLY, never persists (callers own the `persistSubscriptions()` call) | src/store.js |
 | `generateUserSessionId` / `getTodayBusinessDate` | per-request crypto session id; KL business date (en-CA, YYYY-MM-DD) | src/tgv-api.js |
 | `fetchMovieByItemKey` | itemkey/name to movie recid via the cinema catalogue (getcinemamovies + per-movie moviesession_get metadata, 10-min cache, nearest-session-date fallback for advance-selling movies) | src/tgv-api.js |
 | `fetchMovieSessions` | movieid+date+cinema to session list (time/screen/sessionId) | src/tgv-api.js |
