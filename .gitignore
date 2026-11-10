@@ -8,7 +8,8 @@ subscriptions.json.tmp
 subscriptions.json.corrupt-*
 
 # Dependencies and indexes (local artifacts)
-node_modules/
+# no trailing slash: a worktree may symlink node_modules, and `node_modules/` only matches directories
+node_modules
 .codegraph/
 
 # Agent-tool runtime state (omo session resume markers etc.); not tracked

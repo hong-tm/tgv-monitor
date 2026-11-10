@@ -41,7 +41,7 @@ Missing credentials fail at startup via `assertCredentials()` instead of surfaci
 
 ```bash
 npm install
-npm test                                 # 91 offline tests (axios fully stubbed)
+npm test                                 # 93 offline tests (axios fully stubbed)
 npm run smoke:live                       # read-only check of the live TGV API contract
 npm start                                # foreground
 pm2 startOrRestart ecosystem.config.js   # pm2 deployment (example config; adjust paths)
@@ -61,6 +61,6 @@ TGV 促销票监控机器人：每 60 秒轮询 TGV boxoffice 接口，监控中
 
 凭据不进仓库，解析顺序：环境变量 → 仓库外凭据文件（`$TGV_ENV_FILE`）→ 项目内 `.env`（模板见 `.env.example`，已被 gitignore）。缺凭据启动即报错。
 
-`npm test` 跑 91 个离线测试；`pm2 startOrRestart ecosystem.config.js` 部署。业务时区为吉隆坡；`subscriptions.json` 是运行时状态，不入库。
+`npm test` 跑 93 个离线测试；`pm2 startOrRestart ecosystem.config.js` 部署。业务时区为吉隆坡；`subscriptions.json` 是运行时状态，不入库。
 
 License: MIT.

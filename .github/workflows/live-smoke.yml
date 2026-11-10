@@ -2,6 +2,8 @@ name: Live API smoke
 
 # The offline suite stubs axios, so an upstream TGV API change is invisible to
 # CI. This runs the read-only contract check daily; a failed run is the alert.
+# GitHub disables scheduled workflows after 60 days without repository
+# activity; re-enable it from the Actions tab if that happens.
 on:
   schedule:
     - cron: '17 2 * * *' # 10:17 Asia/Kuala_Lumpur, while same-day sessions are on sale

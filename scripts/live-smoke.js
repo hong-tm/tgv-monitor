@@ -12,7 +12,7 @@ const { fetchMovieByItemKey, fetchMovieSessions, fetchTickets, getTodayBusinessD
 
 const CINEMA = process.env.SMOKE_CINEMA || 'VIV';
 const API_BASE = 'https://api.tgv.com.my/api/boxoffice/v1';
-const MAX_TICKET_TRIES = 6;
+const MAX_TICKET_TRIES = 16;
 
 function check(cond, label) {
   if (!cond) throw new Error(label);
@@ -89,7 +89,20 @@ async function main() {
   console.log('TGV live smoke: PASS');
 }
 
-main().catch((e) => {
-  console.error(`FAIL ${e.message}`);
-  process.exit(1);
-});
+// One retry after a pause: a single transient 502/timeout must not read as a
+// contract break, since a red run is the alert.
+const RETRY_DELAY_MS = 30000;
+(async () => {
+  try {
+    await main();
+  } catch (first) {
+    console.error(`attempt 1 failed: ${first.message}; retrying in ${RETRY_DELAY_MS / 1000}s`);
+    await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
+    try {
+      await main();
+    } catch (e) {
+      console.error(`FAIL ${e.message}`);
+      process.exit(1);
+    }
+  }
+})();

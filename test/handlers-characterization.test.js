@@ -783,3 +783,47 @@ test('a typed title containing a hyphen matches the hyphenated catalogue name', 
   }
   assert.equal(await fetchMovieByItemKey('-'), null, 'a bare dash must not match every title');
 });
+
+test('the dashboard hides the per-order cap for a sold-out promo and shows it while on sale', async (t) => {
+  isolate(t);
+  mockWrites(t);
+  const { sendRealtimeDashboard } = require('../src/views.js');
+  const { sent } = mockAxios(t, {
+    moviesession_gettickets: { data: { results: { tickets: [
+      { ticketTypeCode: '5785', description: 'Promo', priceInCents: 600, quantityAvailablePerOrder: 20, longDescription: "Today's Promotion Limit Reached" },
+      { ticketTypeCode: '0001', description: 'Adult', priceInCents: 2000, quantityAvailablePerOrder: 10, longDescription: '' }
+    ] } } }
+  });
+  store.setSubscriptions([
+    { sessionId: '157699', cinemaId: 'VIV', movieTitle: 'M', showTime: '20:30', targetCodes: ['5785', '0001'], targetDetails: {}, alerted: false, alertedCodes: [], failCount: 0 }
+  ]);
+
+  await sendRealtimeDashboard();
+
+  const text = lastSend(sent).payload.text;
+  assert.match(text, /<b>Promo<\/b> \(RM6\): 🔴 额度已尽\n/);
+  assert.match(text, /<b>Adult<\/b> \(RM20\): 🟢 <b>有票可抢<\/b> \[剩余: 10\]\n/);
+});
+
+test('a sub deleted while its probe fetch fails earns no strike and no removal notice', async (t) => {
+  isolate(t);
+  mockWrites(t);
+  const { runProbeCycle } = require('../src/probe.js');
+  t.mock.method(console, 'error', () => {});
+  const sent = [];
+  const sub = { sessionId: '157699', cinemaId: 'VIV', movieTitle: 'M', showTime: '20:30', targetCodes: ['5785'], targetDetails: {}, alerted: false, alertedCodes: [], failCount: 14 };
+  store.setSubscriptions([sub]);
+  t.mock.method(axios, 'post', async (url, data) => {
+    if (url.includes('api.telegram.org')) {
+      sent.push(data);
+      return { data: { ok: true, result: {} } };
+    }
+    store.setSubscriptions([]); // /del lands mid-fetch
+    throw new Error('timeout');
+  });
+
+  await runProbeCycle();
+
+  assert.equal(sub.failCount, 14);
+  assert.equal(sent.length, 0, 'no auto-removal notice for a sub the user already deleted');
+});

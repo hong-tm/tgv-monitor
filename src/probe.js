@@ -84,6 +84,9 @@ async function runProbeCycle() {
         }
 
       } catch (err) {
+        // Same guard as the success path: a sub deleted while the fetch was in
+        // flight must not earn strikes or a removal notice.
+        if (!getSubscriptions().includes(sub)) continue;
         sub.failCount = (sub.failCount || 0) + 1;
         console.error(`[Probe] 探测失败 (${sub.cinemaId}/${sub.sessionId}) failCount=${sub.failCount}: ${err.message}`);
         if (sub.failCount >= 15) {

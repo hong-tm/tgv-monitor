@@ -8,7 +8,7 @@ const { TG_CHAT_ID, PROMO_TICKET_CODES } = require('./config');
 const { classifyInput } = require('./input-classifier');
 
 // Appended to a confirmation when the change is in memory but not yet on disk.
-const SAVE_FAILED_NOTE = '\n⚠️ 写入磁盘失败，改动暂存在内存中，下一轮探测会自动重试保存。';
+const SAVE_FAILED_NOTE = '\n⚠️ 写入磁盘失败，改动暂存在内存中，下一轮探测会自动重试保存（保存成功前重启会丢失这次改动）。';
 
 async function handleSmartInput(text, defaultCinemaId = 'VIV') {
   const c = classifyInput(text, defaultCinemaId);
