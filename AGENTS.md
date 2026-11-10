@@ -25,25 +25,25 @@ Live deployment (since 2026-09-25): the project-local `.env` is the active crede
 tgv-monitor/
 ├── monitor.js            # 20 lines: pm2 entry shim only; require.main guard + 6 re-exports
 ├── src/                  # 11 modules, 1236 lines
-│   ├── config.js         # 66 lines: TG_BOT_TOKEN, TG_CHAT_ID, CHECK_INTERVAL_MS, DATA_FILE, COMMON_HEADERS, DEFAULT_AREA_CATEGORY, PROMO_TICKET_CODES, assertCredentials
+│   ├── config.js         # 70 lines: TG_BOT_TOKEN, TG_CHAT_ID, CHECK_INTERVAL_MS, DATA_FILE, COMMON_HEADERS, DEFAULT_AREA_CATEGORY, PROMO_TICKET_CODES, assertCredentials
 │   ├── util.js           # 12 lines: escapeHtml
 │   ├── payload.js        # 50 lines: safeDecode, parseCallback
-│   ├── input-classifier.js  # 47 lines: classifyInput; text → intent (empty/seat-link|movie-link|uuid|session|alias|search)
+│   ├── input-classifier.js  # 52 lines: classifyInput; text → intent (empty/seat-link|movie-link|uuid|session|alias|search)
 │   ├── telegram.js       # 47 lines: callTgApi, notifyUser, setupBotCommands
 │   ├── tgv-api.js        # 186 lines: generateUserSessionId, getTodayBusinessDate, fetchMovieByItemKey/Sessions/Tickets
 │   ├── store.js          # 132 lines: subscriptions (get/set accessors), sessionCache, cacheSession, upsertSubscription; load/save, persistSubscriptions
-│   ├── views.js          # 177 lines: showSessionsByMovieId, showTicketSelection, sendRealtimeDashboard, sendHelp, sendSubscriptionList
+│   ├── views.js          # 205 lines: showSessionsByMovieId, showTicketSelection, sendRealtimeDashboard, sendHelp, sendSubscriptionList
 │   ├── handlers.js       # 300 lines: command/action router; handleSmartInput, handleMessage, handleCallbackQuery
 │   ├── probe.js          # 118 lines: probeRunning, runProbeCycle
-│   └── app.js            # 62 lines: lastUpdateId, skipBacklog, startTelegramPolling, main
+│   └── app.js            # 64 lines: lastUpdateId, skipBacklog, startTelegramPolling, main
 ├── scripts/
 │   └── live-smoke.js     # read-only contract check against the real TGV API (`npm run smoke:live`)
 ├── test/                 # 5 files, 1966 lines; node:test, offline (axios stubbed), 93 tests
 │   ├── child-process.test.js              # 73 lines: CLI / entry-shim smoke tests
-│   ├── classifier.test.js                 # 161 lines: classifyInput unit tests
-│   ├── handlers-characterization.test.js  # 596 lines: handler integration / characterization tests
-│   ├── store.test.js                      # 220 lines: store accessor and upsertSubscription tests
-│   └── unit.test.js                       # 387 lines: callback_data byte-budget + source-level invariants
+│   ├── classifier.test.js                 # 176 lines: classifyInput unit tests
+│   ├── handlers-characterization.test.js  # 829 lines: handler integration / characterization tests
+│   ├── store.test.js                      # 233 lines: store accessor and upsertSubscription tests
+│   └── unit.test.js                       # 655 lines: callback_data byte-budget + source-level invariants
 ├── ecosystem.config.js   # pm2: name tgv-monitor, fork, NODE_OPTIONS ipv4first
 ├── package.json          # commonjs; main monitor.js; sole dep axios ^1.20.0
 ├── package-lock.json

@@ -20,7 +20,7 @@ jobs:
   smoke:
     name: TGV boxoffice contract
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 15 # worst case is two full attempts of 8s-timeout calls
     env:
       TGV_ENV_FILE: /dev/null
     steps:
