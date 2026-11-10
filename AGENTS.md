@@ -8,7 +8,7 @@ Node.js (CommonJS) Telegram bot that monitors ticket availability for TGV,
 a Malaysian cinema chain (tgv.com.my). Polls the TGV boxoffice API every 60s and
 alerts the owner via Telegram when monitored promo tickets gain sellable quota.
 Stack: axios + raw Telegram Bot API over long-polling.
-Was a single 826-line file; split into `src/` modules in step 2 (`monitor.js` is now a 20-line entry shim; `src/` now holds 11 modules, 1165 lines; repo total 2849 lines).
+Was a single 826-line file; split into `src/` modules in step 2 (`monitor.js` is now a 20-line entry shim; `src/` now holds 11 modules, 1229 lines).
 
 ## CREDENTIALS
 Bot token and chat id are NOT in the repo. `src/config.js` resolves them in this order:
@@ -24,19 +24,21 @@ Live deployment (since 2026-09-25): the project-local `.env` is the active crede
 ```
 tgv-monitor/
 ├── monitor.js            # 20 lines: pm2 entry shim only; require.main guard + 6 re-exports
-├── src/                  # 11 modules, 1165 lines
+├── src/                  # 11 modules, 1229 lines
 │   ├── config.js         # 66 lines: TG_BOT_TOKEN, TG_CHAT_ID, CHECK_INTERVAL_MS, DATA_FILE, COMMON_HEADERS, DEFAULT_AREA_CATEGORY, PROMO_TICKET_CODES, assertCredentials
 │   ├── util.js           # 12 lines: escapeHtml
 │   ├── payload.js        # 50 lines: safeDecode, parseCallback
 │   ├── input-classifier.js  # 47 lines: classifyInput; text → intent (empty/seat-link|movie-link|uuid|session|alias|search)
 │   ├── telegram.js       # 47 lines: callTgApi, notifyUser, setupBotCommands
-│   ├── tgv-api.js        # 104 lines: generateUserSessionId, getTodayBusinessDate, fetchMovieByItemKey/Sessions/Tickets
-│   ├── store.js          # 101 lines: subscriptions (get/set accessors), sessionCache, cacheSession, upsertSubscription; load/save
+│   ├── tgv-api.js        # 186 lines: generateUserSessionId, getTodayBusinessDate, fetchMovieByItemKey/Sessions/Tickets
+│   ├── store.js          # 132 lines: subscriptions (get/set accessors), sessionCache, cacheSession, upsertSubscription; load/save, persistSubscriptions
 │   ├── views.js          # 177 lines: showSessionsByMovieId, showTicketSelection, sendRealtimeDashboard, sendHelp, sendSubscriptionList
-│   ├── handlers.js       # 282 lines: command/action router; handleSmartInput, handleMessage, handleCallbackQuery
+│   ├── handlers.js       # 300 lines: command/action router; handleSmartInput, handleMessage, handleCallbackQuery
 │   ├── probe.js          # 115 lines: probeRunning, runProbeCycle
 │   └── app.js            # 62 lines: lastUpdateId, skipBacklog, startTelegramPolling, main
-├── test/                 # 5 files, 1664 lines; node:test, offline (axios stubbed), 78 tests
+├── scripts/
+│   └── live-smoke.js     # read-only contract check against the real TGV API (`npm run smoke:live`)
+├── test/                 # 5 files, 1922 lines; node:test, offline (axios stubbed), 91 tests
 │   ├── child-process.test.js              # 73 lines: CLI / entry-shim smoke tests
 │   ├── classifier.test.js                 # 161 lines: classifyInput unit tests
 │   ├── handlers-characterization.test.js  # 596 lines: handler integration / characterization tests
@@ -67,7 +69,7 @@ Dependency direction (acyclic): `config`/`util`/`payload` → none; `input-class
 | Persistence | `loadSubscriptions` / `saveSubscriptions` | src/store.js; synchronous fs, single state file |
 | Bot command registration | `setupBotCommands` | src/telegram.js |
 | Telegram transport | `callTgApi` / `notifyUser` | src/telegram.js; raw API, HTML parse_mode |
-| Tests | `test/` | `npm test`; offline, axios stubbed, 78 tests |
+| Tests | `test/` | `npm test`; offline, axios stubbed, 91 tests |
 | Process / ops | `ecosystem.config.js` | pm2 app name and script must match the live process |
 ## CODE MAP
 Split across `src/`; `monitor.js` is a thin pm2 entry shim. It re-exports only `escapeHtml parseCallback runProbeCycle startTelegramPolling getSubscriptions setSubscriptions`, so `probeRunning`, `lastUpdateId`, `safeDecode`, `loadSubscriptions`, `saveSubscriptions`, `sessionCache`, `cacheSession`, `upsertSubscription`, `classifyInput`, `sendHelp`, `sendSubscriptionList` and `setupBotCommands` are reachable only through their own module.
@@ -86,6 +88,7 @@ Split across `src/`; `monitor.js` is a thin pm2 entry shim. It re-exports only `
 | `notifyUser` | sendMessage with HTML + optional reply_markup | src/telegram.js |
 | `setupBotCommands` | setMyCommands for the 5 slash commands | src/telegram.js |
 | `loadSubscriptions` / `saveSubscriptions` | JSON file state; load creates an empty file if missing; save = full rewrite, sync | src/store.js |
+| `persistSubscriptions` / `hasPendingSave` | the save every caller outside store.js uses: never throws, returns false and raises the retry flag on a failed write; `runProbeCycle` retries while the flag is up | src/store.js |
 | `getSubscriptions` / `setSubscriptions` | the ONLY accessors to the live `subscriptions` array | src/store.js |
 | `sessionCache` / `cacheSession` | Map `${cinemaId}_${sessionId}` to {movieName, showTime}; FIFO cap 500, prefer cacheSession | src/store.js |
 | `upsertSubscription` | find-or-create a sub keyed by `(sessionId, cinemaId)`; mutates memory ONLY, never persists (callers own `saveSubscriptions`) | src/store.js |
@@ -110,7 +113,7 @@ Split across `src/`; `monitor.js` is a thin pm2 entry shim. It re-exports only `
 - Code comments in English, low density (only what the code cannot convey). Telegram copy shown to users stays Chinese (emoji-heavy); keep that copy style.
 - Transport is the raw Telegram Bot API through `callTgApi`/axios, not a bot library.
 - Hardcoded domain constants: `DEFAULT_AREA_CATEGORY = '0000000009'` and `PROMO_TICKET_CODES = ['5785','5759','6336']` live in `src/config.js`; cinema `VIV` remains the default argument value in several functions. `src/views.js`'s inline `isPromo` predicate (used for the 🔥 emoji) is a DIFFERENT predicate from the `suball` promo filter and must stay separate.
-- Persistence: read or mutate the live `subscriptions` array ONLY via `getSubscriptions()`/`setSubscriptions()` from src/store.js, and call `saveSubscriptions` on change. No other state files. Do NOT cache a subscriptions reference across calls, `/del` replaces the array.
+- Persistence: read or mutate the live `subscriptions` array ONLY via `getSubscriptions()`/`setSubscriptions()` from src/store.js, and call `persistSubscriptions()` on change (never the throwing `saveSubscriptions` directly; a handler that gets `false` back appends the save-failed note to its reply). No other state files. Do NOT cache a subscriptions reference across calls, `/del` replaces the array.
 - Async flow: `main()` is not awaited (monitor.js). Both boot loops launch fire-and-forget (src/app.js). Never await `startTelegramPolling()`, it is an infinite loop.
 - Error style: TGV fetch errors return null or empty and callers degrade gracefully; probe failures bump `failCount` and auto-remove at 15.
 - No lint, format, or build tooling exists, and there are no devDependencies. Do not introduce eslint/prettier/tsconfig and claim project precedent.
@@ -131,7 +134,8 @@ Split across `src/`; `monitor.js` is a thin pm2 entry shim. It re-exports only `
 node monitor.js              # run the bot in foreground (long-running)
 npm start                    # same as node monitor.js
 npm install                  # restore deps (axios only)
-npm test                     # node --test; test/ offline, axios stubbed, 78 tests
+npm test                     # node --test; test/ offline, axios stubbed, 91 tests
+npm run smoke:live           # read-only check of the real TGV API contract (no credentials, no Telegram); also runs daily in .github/workflows/live-smoke.yml
 pm2 startOrRestart ecosystem.config.js   # (re)start under pm2
 ```
 No build, lint, or format tooling exists.

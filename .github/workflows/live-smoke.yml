@@ -1,0 +1,37 @@
+name: Live API smoke
+
+# The offline suite stubs axios, so an upstream TGV API change is invisible to
+# CI. This runs the read-only contract check daily; a failed run is the alert.
+on:
+  schedule:
+    - cron: '17 2 * * *' # 10:17 Asia/Kuala_Lumpur, while same-day sessions are on sale
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    name: TGV boxoffice contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      TGV_ENV_FILE: /dev/null
+    steps:
+      - name: Check out code
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '26'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Check the live TGV API contract
+        run: npm run smoke:live
