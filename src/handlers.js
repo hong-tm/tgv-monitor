@@ -1,11 +1,14 @@
 const { notifyUser, callTgApi } = require('./telegram');
 const { fetchMovieByItemKey, fetchTickets, isPromoSoldOut } = require('./tgv-api');
-const { getSubscriptions, setSubscriptions, saveSubscriptions, sessionCache, cacheSession, upsertSubscription } = require('./store');
+const { getSubscriptions, setSubscriptions, persistSubscriptions, sessionCache, cacheSession, upsertSubscription } = require('./store');
 const { parseCallback } = require('./payload');
 const { showSessionsByMovieId, showTicketSelection, sendRealtimeDashboard, sendHelp, sendSubscriptionList } = require('./views');
 const { escapeHtml } = require('./util');
 const { TG_CHAT_ID, PROMO_TICKET_CODES } = require('./config');
 const { classifyInput } = require('./input-classifier');
+
+// Appended to a confirmation when the change is in memory but not yet on disk.
+const SAVE_FAILED_NOTE = '\n⚠️ 写入磁盘失败，改动暂存在内存中，下一轮探测会自动重试保存。';
 
 async function handleSmartInput(text, defaultCinemaId = 'VIV') {
   const c = classifyInput(text, defaultCinemaId);
@@ -47,7 +50,7 @@ async function handleSmartInput(text, defaultCinemaId = 'VIV') {
     };
 
     return await notifyUser(
-      `🎯 <b>已识别电影:</b> 《${escapeHtml(movieName)}》${uuidText}\n` +
+      `🎯 <b>已识别电影:</b> 《${escapeHtml(movieInfo?.name || movieName)}》${uuidText}\n` +
       `📍 <b>影院:</b> ${escapeHtml(cinemaId)} | <b>排片日期:</b> <code>${escapeHtml(targetDate)}</code>\n` +
       `🎫 <b>目标场次:</b> <code>${escapeHtml(sessionId)}</code>\n\n` +
       `👇 <b>请选择操作：</b>`,
@@ -118,8 +121,8 @@ async function handleMessage(msg) {
       const lenBefore = getSubscriptions().length;
       setSubscriptions(getSubscriptions().filter(s => s.sessionId !== targetId));
       if (getSubscriptions().length < lenBefore) {
-        saveSubscriptions(getSubscriptions());
-        return await notifyUser(`🗑️ 已移除场次 <code>${escapeHtml(targetId)}</code>。`);
+        const saved = persistSubscriptions();
+        return await notifyUser(`🗑️ 已移除场次 <code>${escapeHtml(targetId)}</code>。` + (saved ? '' : SAVE_FAILED_NOTE));
       } else {
         return await notifyUser(`⚠️ 未在列表中找到场次 <code>${escapeHtml(targetId)}</code>。`);
       }
@@ -205,13 +208,18 @@ async function handleCallbackQuery(cb) {
     const cinemaId = second === undefined ? null : first;
     const matches = s => s.sessionId === sessionId && (cinemaId === null || s.cinemaId === cinemaId);
     const target = getSubscriptions().find(matches);
-    const movieName = target?.movieTitle || sessionId;
+    // A stale button (already deleted, or auto-removed by the probe) must not
+    // claim a removal that did not happen.
+    if (!target) {
+      return await callTgApi('answerCallbackQuery', { callback_query_id: cb.id, text: '该场次已不在监控列表中', show_alert: true });
+    }
+    const movieName = target.movieTitle || sessionId;
 
     setSubscriptions(getSubscriptions().filter(s => !matches(s)));
-    saveSubscriptions(getSubscriptions());
+    const saved = persistSubscriptions();
 
     await callTgApi('answerCallbackQuery', { callback_query_id: cb.id, text: `已移除《${movieName}》` });
-    return await notifyUser(`🗑️ <b>已成功移除:</b> 《${escapeHtml(movieName)}》 (场次 <code>${escapeHtml(sessionId)}</code>)`);
+    return await notifyUser(`🗑️ <b>已成功移除:</b> 《${escapeHtml(movieName)}》 (场次 <code>${escapeHtml(sessionId)}</code>)` + (saved ? '' : SAVE_FAILED_NOTE));
   }
 
   if (action === 'suball') {
@@ -241,10 +249,10 @@ async function handleCallbackQuery(cb) {
         sub.targetDetails[code] = { name: pt.description, price: pt.priceInCents / 100 };
       }
     }
-    saveSubscriptions(getSubscriptions());
+    const saved = persistSubscriptions();
 
     await callTgApi('answerCallbackQuery', { callback_query_id: cb.id, text: '已订阅促销票！' });
-    return await notifyUser(`✅ <b>《${escapeHtml(movieName)}》已添加促销票监控！</b>\n时间: <code>${escapeHtml(showTime)}</code>\n包含票种:\n• ` + promoTickets.map(p => escapeHtml(p.description)).join('\n• '));
+    return await notifyUser(`✅ <b>《${escapeHtml(movieName)}》已添加促销票监控！</b>\n时间: <code>${escapeHtml(showTime)}</code>\n包含票种:\n• ` + promoTickets.map(p => escapeHtml(p.description)).join('\n• ') + (saved ? '' : SAVE_FAILED_NOTE));
   }
 
   if (action === 'sub') {
@@ -271,13 +279,14 @@ async function handleCallbackQuery(cb) {
       name: targetTicket.description,
       price: targetTicket.priceInCents / 100
     };
-    saveSubscriptions(getSubscriptions());
+    const saved = persistSubscriptions();
 
     const soldOut = isPromoSoldOut(targetTicket);
     await callTgApi('answerCallbackQuery', { callback_query_id: cb.id, text: `已添加 ${targetTicket.description}` });
     return await notifyUser(
       `✅ <b>订阅成功！</b>\n电影: <b>《${escapeHtml(movieName)}》</b>\n票种: <b>${escapeHtml(targetTicket.description)}</b> (RM${targetTicket.priceInCents / 100})` +
-      (soldOut ? `\n⚠️ 该票种今日额度已尽，已进入监控，放票后会立刻提醒。` : '')
+      (soldOut ? `\n⚠️ 该票种今日额度已尽，已进入监控，放票后会立刻提醒。` : '') +
+      (saved ? '' : SAVE_FAILED_NOTE)
     );
   }
 

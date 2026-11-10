@@ -199,7 +199,7 @@ test('select-seats link (no /uuid) emits the exact card, two buttons and caches 
   assert.equal(sent[0].method, 'sendMessage');
   assert.equal(
     sent[0].payload.text,
-    '🎯 <b>已识别电影:</b> 《spider man》\n' +
+    '🎯 <b>已识别电影:</b> 《Spider Man》\n' +
       '🆔 <b>Movie UUID:</b> <code>uuid-1</code>\n' +
       '📍 <b>影院:</b> VIV | <b>排片日期:</b> <code>2026-09-24</code>\n' +
       '🎫 <b>目标场次:</b> <code>157699</code>\n\n' +
@@ -719,4 +719,67 @@ test('sub confirmation carries the sold-out warning for a limit-reached ticket',
   const last = sent[sent.length - 1];
   assert.equal(last.method, 'sendMessage');
   assert.ok(last.payload.text.includes('今日额度已尽，已进入监控，放票后会立刻提醒'), 'the warning must ride the confirmation');
+});
+
+test('a stale del button reports the miss instead of confirming a removal', async (t) => {
+  isolate(t);
+  const writes = mockWrites(t);
+  const { sent } = mockAxios(t);
+  const other = { sessionId: '111', cinemaId: 'VIV', movieTitle: 'Keep', showTime: '10:00', targetCodes: ['5785'], targetDetails: {}, alerted: false, alertedCodes: [], failCount: 0 };
+  store.setSubscriptions([other]);
+
+  await handleCallbackQuery({ id: '1', data: 'del|VIV|999', message: { message_id: 2, chat: { id: TG_CHAT_ID } } });
+
+  assert.deepEqual(store.getSubscriptions(), [other]);
+  assert.equal(writes.length, 0, 'nothing changed, nothing to save');
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].method, 'answerCallbackQuery');
+  assert.equal(sent[0].payload.text, '该场次已不在监控列表中');
+  assert.equal(sent[0].payload.show_alert, true);
+});
+
+test('a failed save in a callback still answers, warns, and is retried by the next probe cycle', async (t) => {
+  isolate(t);
+  const { runProbeCycle } = require('../src/probe.js');
+  let failing = true;
+  const writes = [];
+  t.mock.method(fs, 'writeFileSync', (file, data) => {
+    if (failing) throw new Error('ENOSPC');
+    writes.push(data);
+  });
+  t.mock.method(fs, 'renameSync', () => {});
+  t.mock.method(console, 'error', () => {});
+  const { sent } = mockAxios(t);
+  store.setSubscriptions([
+    { sessionId: '157699', cinemaId: 'VIV', movieTitle: 'Spider Man', showTime: '20:30', targetCodes: ['5785'], targetDetails: {}, alerted: false, alertedCodes: [], failCount: 0 }
+  ]);
+
+  await handleCallbackQuery({ id: '1', data: 'del|VIV|157699', message: { message_id: 2, chat: { id: TG_CHAT_ID } } });
+
+  assert.deepEqual(store.getSubscriptions(), []);
+  assert.ok(sent.some((c) => c.method === 'answerCallbackQuery'), 'the button spinner is released');
+  assert.match(lastSend(sent).payload.text, /^🗑️ <b>已成功移除:<\/b> 《Spider Man》/);
+  assert.match(lastSend(sent).payload.text, /写入磁盘失败/);
+  assert.equal(store.hasPendingSave(), true);
+
+  failing = false;
+  await runProbeCycle();
+  assert.equal(writes.length, 1, 'the probe cycle retries the handler save');
+  assert.equal(JSON.parse(writes[0]).length, 0);
+  assert.equal(store.hasPendingSave(), false);
+});
+
+test('a typed title containing a hyphen matches the hyphenated catalogue name', async (t) => {
+  isolate(t);
+  mockWrites(t);
+  const { fetchMovieByItemKey } = require('../src/tgv-api.js');
+  mockAxios(t, {
+    moviesession_getcinemamovies: { data: { results: { movieidlist: ['uuid-1'] } } },
+    moviesession_get: { data: { results: { movies: [{ recid: 'uuid-1', name: 'Spider-Man: Brand New Day', itemkey: 'spider-man-brand-new-day' }] } } }
+  });
+
+  for (const typed of ['Spider-Man', 'spider man', 'spider-man-brand']) {
+    assert.deepEqual(await fetchMovieByItemKey(typed), { movieId: 'uuid-1', name: 'Spider-Man: Brand New Day' }, typed);
+  }
+  assert.equal(await fetchMovieByItemKey('-'), null, 'a bare dash must not match every title');
 });
